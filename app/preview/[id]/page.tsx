@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabase';
+import { getDraftFromIndexedDB, saveDraftToIndexedDB } from '@/lib/localDatabase';
 import QRCode from 'qrcode';
 import { jsPDF } from 'jspdf';
 import { 
@@ -76,14 +77,13 @@ export default function PreviewPagina() {
         setLoading(true);
         setError(null);
 
-        // 1. Try reading from localStorage first (for simulation mode)
-        const localData = localStorage.getItem(`draft_${id}`);
-        if (localData) {
-          const parsed = JSON.parse(localData);
-          setDraft(parsed);
-          if (parsed.pago) {
+        // 1. Try reading from IndexedDB first (for simulation mode)
+        const localDraft = await getDraftFromIndexedDB(id);
+        if (localDraft) {
+          setDraft(localDraft);
+          if (localDraft.pago) {
             setPaid(true);
-            setGeneratedSlug(parsed.slug || null);
+            setGeneratedSlug(localDraft.slug || null);
           }
           setLoading(false);
           return;
@@ -134,13 +134,12 @@ export default function PreviewPagina() {
           setPaid(true);
           setGeneratedSlug(data.slug || null);
           
-          // Also update local storage draft if cached
-          const localData = localStorage.getItem(`draft_${id}`);
-          if (localData) {
-            const parsed = JSON.parse(localData);
-            parsed.pago = true;
-            parsed.slug = data.slug;
-            localStorage.setItem(`draft_${id}`, JSON.stringify(parsed));
+          // Also update IndexedDB draft if cached
+          const localDraft = await getDraftFromIndexedDB(id);
+          if (localDraft) {
+            localDraft.pago = true;
+            localDraft.slug = data.slug;
+            await saveDraftToIndexedDB(id, localDraft);
           }
 
           clearInterval(interval);
@@ -167,14 +166,14 @@ export default function PreviewPagina() {
           console.error('Error generating QR code:', err);
         });
 
-      // Also ensure it is registered in localStorage under slug_ for simulated direct navigation
-      const localData = localStorage.getItem(`draft_${id}`);
-      if (localData) {
-        const parsed = JSON.parse(localData);
-        parsed.pago = true;
-        parsed.slug = generatedSlug;
-        localStorage.setItem(`slug_${generatedSlug}`, JSON.stringify(parsed));
-      }
+      // Also ensure it is registered in IndexedDB under slug_ for simulated direct navigation
+      getDraftFromIndexedDB(id).then(localDraft => {
+        if (localDraft) {
+          localDraft.pago = true;
+          localDraft.slug = generatedSlug;
+          saveDraftToIndexedDB(id, localDraft);
+        }
+      });
     }
   }, [paid, generatedSlug, id]);
 
@@ -323,13 +322,12 @@ export default function PreviewPagina() {
       setPaid(true);
       setGeneratedSlug(data.slug);
 
-      // Update localStorage draft
-      const localData = localStorage.getItem(`draft_${draft.id}`);
-      if (localData) {
-        const parsed = JSON.parse(localData);
-        parsed.pago = true;
-        parsed.slug = data.slug;
-        localStorage.setItem(`draft_${draft.id}`, JSON.stringify(parsed));
+      // Update IndexedDB draft
+      const localDraft = await getDraftFromIndexedDB(draft.id);
+      if (localDraft) {
+        localDraft.pago = true;
+        localDraft.slug = data.slug;
+        await saveDraftToIndexedDB(draft.id, localDraft);
       }
     } catch (err: unknown) {
       console.error(err);

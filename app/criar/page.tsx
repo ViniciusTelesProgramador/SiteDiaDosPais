@@ -3,6 +3,7 @@
 import React, { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { saveDraftToIndexedDB } from '@/lib/localDatabase';
 import { 
   Heart, 
   Upload, 
@@ -145,8 +146,8 @@ export default function CriarPresente() {
           isMock: true
         };
 
-        // Save to localStorage
-        localStorage.setItem(`draft_${mockId}`, JSON.stringify(mockDraft));
+        // Save to IndexedDB (bypasses localStorage quota limits)
+        await saveDraftToIndexedDB(mockId, mockDraft);
         
         // Wait a second to simulate server delay
         await new Promise((resolve) => setTimeout(resolve, 1500));

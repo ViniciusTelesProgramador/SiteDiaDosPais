@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { Loader2, Heart, Music, Sparkles } from 'lucide-react';
+import { getDraftBySlugFromIndexedDB } from '@/lib/localDatabase';
 
 interface PageData {
   id: string;
@@ -30,36 +31,14 @@ export default function PublicPageClient({ slug, initialData }: PublicPageClient
     // If we already have initialData from server, do nothing
     if (initialData) return;
 
-    // Check localStorage fallback for simulation mode
-    const fetchLocalData = () => {
+    // Check IndexedDB fallback for simulation mode
+    const fetchLocalData = async () => {
       try {
-        const localKey = `slug_${slug}`;
-        const cached = localStorage.getItem(localKey);
-        
-        if (cached) {
-          setData(JSON.parse(cached));
+        const foundDraft = await getDraftBySlugFromIndexedDB(slug);
+        if (foundDraft) {
+          setData(foundDraft);
         } else {
-          // Check all drafts in localStorage just in case they are saved under draft_[id] instead
-          let foundDraft = null;
-          for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (key && key.startsWith('draft_')) {
-              const draftStr = localStorage.getItem(key);
-              if (draftStr) {
-                const parsed = JSON.parse(draftStr);
-                if (parsed.slug === slug && parsed.pago) {
-                  foundDraft = parsed;
-                  break;
-                }
-              }
-            }
-          }
-
-          if (foundDraft) {
-            setData(foundDraft);
-          } else {
-            setError('Esta homenagem ainda não foi ativada ou não existe.');
-          }
+          setError('Esta homenagem ainda não foi ativada ou não existe.');
         }
       } catch (err) {
         console.error(err);
