@@ -145,6 +145,42 @@ export async function sendReactionEmail(
   });
 }
 
+/**
+ * Segundo e-mail da reação (Fase 4): o destinatário escreveu de volta.
+ * O texto dele vai sozinho, em serif, sem moldura de marketing — e o
+ * comprador é convidado a baixar a Recordação (PDF com os dois lados).
+ */
+export async function sendReactionTextEmail(
+  emailComprador: string,
+  nomeDestinatario: string,
+  texto: string,
+  paginaId: string
+): Promise<boolean> {
+  const previewUrl = `${appUrl()}/preview/${paginaId}`;
+  const textoEscapado = texto
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  const html = layoutEmail(`
+    <div style="text-align: center; margin-bottom: 8px;">
+      <h2 style="color: #2c2a27; font-weight: normal;">${nomeDestinatario} escreveu de volta.</h2>
+    </div>
+    <blockquote style="margin: 28px 0; padding: 20px 24px; border-left: 3px solid #d1c9ba; font-size: 18px; line-height: 1.6; color: #2c2a27; font-style: italic; white-space: pre-line;">${textoEscapado}</blockquote>
+    <p style="text-align: center; font-size: 14px; color: #8c7a5c;">Guarda esse.</p>
+    <p style="font-size: 14px; color: #555; line-height: 1.5; margin-top: 28px;">Essa conversa entre vocês dois agora existe em uma folha: abra a sua página de compra e baixe a <strong>Recordação em PDF</strong> — o que você escreveu e o que ele respondeu, juntos. Imprima, guarde.</p>
+    <p style="margin: 24px 0; text-align: center;">
+      <a href="${previewUrl}" style="background-color: #2c2a27; color: #faf8f5; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block;">Baixar a Recordação</a>
+    </p>
+  `);
+
+  return enviar({
+    to: emailComprador,
+    subject: `${nomeDestinatario} escreveu de volta.`,
+    html,
+  });
+}
+
 /** Lembrete pré-revelação (T2.8): enviado até 48h antes de revelar_em. */
 export async function sendReminderEmail(
   emailComprador: string,

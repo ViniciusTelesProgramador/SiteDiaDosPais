@@ -29,6 +29,7 @@ export interface Pagina {
   visualizacoes: number;
   primeira_visualizacao_em: string | null;
   reacao_emoji: string | null;
+  reacao_texto: string | null;
   reacao_em: string | null;
   lembrete_enviado_em: string | null;
   criado_em: string;
@@ -51,4 +52,18 @@ export function normalizarTema(tema: string | null | undefined): 'classico' | 'd
 export function aindaNaoRevelada(revelarEm: string | null | undefined): boolean {
   if (!revelarEm) return false;
   return new Date(revelarEm).getTime() > Date.now();
+}
+
+/**
+ * Ordena os blocos na ordem narrativa da página (Fase 4): riso → memória →
+ * aprofundamento → clímax. Ids desconhecidos mantêm a posição relativa
+ * entre si, antes do clímax.
+ */
+export function ordenarBlocosNarrativa(blocos: Bloco[] | null | undefined, ordem: string[]): Bloco[] {
+  if (!blocos) return [];
+  return [...blocos].sort((a, b) => {
+    const ia = ordem.indexOf(a.pergunta_id);
+    const ib = ordem.indexOf(b.pergunta_id);
+    return (ia === -1 ? ordem.length - 1 : ia) - (ib === -1 ? ordem.length - 1 : ib);
+  });
 }

@@ -47,3 +47,6 @@ conteúdo) → reação por emoji. Em modo mock tudo fica no IndexedDB do browse
   `MERCADO_PAGO_WEBHOOK_SECRET` (com aviso); em produção sem secret, TODO
   webhook é rejeitado.
 - Logs do servidor em PowerShell mostram UTF-8 mangled (Ã§) — é só o console.
+- Ao testar `/api/reacao` via PowerShell: `-Body` string corrompe o emoji
+  (ISO-8859-1) e gera 400. Envie bytes:
+  `[Text.Encoding]::UTF8.GetBytes($json)` com `charset=utf-8`.

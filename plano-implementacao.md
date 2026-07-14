@@ -248,6 +248,37 @@ Tudo aqui é pré-requisito das fases seguintes. Nenhuma rota nova deve ser expo
 
 ---
 
+## Fase 4 — Profundidade Emocional (aprovada integralmente em 14/07/2026)
+
+> Origem: análise "levar a experiência emocional ao limite" sobre a `visao-produto.md`. Princípio: a emoção vem do material bruto (o que o filho lembrou); o produto extrai material melhor e não atrapalha na entrega.
+
+### T4.1 🔴 Roteiro novo das perguntas guiadas
+- **Arquivos:** `lib/config.ts` (só configuração).
+- **O que muda:** P2 → "Hoje eu entendo" (irritava na infância, entende adulto); P3 → "Você achou que eu não vi" (o esforço invisível dele, notado); P4 ganha "Escreve aqui. **Ele vai ler.**"; P1 intocada. A antiga "lembrança" migra para o placeholder das legendas ("Que dia foi esse? O que você lembra dele?"). Helper fixo nas perguntas: *"Não precisa ser bonito. Precisa ser verdade."*
+- **Aceite:** perguntas novas aparecem uma por vez no formulário; blocos com títulos novos renderizam; páginas legadas (ids `orgulho`/`lembranca`) continuam renderizando.
+
+### T4.2 🔴 Ordem narrativa + clímax + fade por scroll
+- **Arquivos:** `components/PageRenderer.tsx`, `lib/config.ts` (ORDEM_NARRATIVA/BLOCO_CLIMAX), `lib/types.ts`.
+- **O que muda:** ordem fixa na página: frase (riso) → fotos (memória) → aprofundamento → **"O que eu nunca te disse" como clímax** (mais respiro, tipografia maior, título primeiro e texto num segundo fôlego) → fechamento. Blocos surgem com fade suave conforme o scroll (só na página pública — `cerimonia`; preview de edição continua imediato).
+- **Aceite:** ordem independe da ordem de resposta; clímax visualmente distinto; sem timers automáticos segurando texto; preview ao vivo sem animação de scroll.
+
+### T4.3 🔴 Reação com texto opcional + segundo e-mail
+- **Arquivos:** `app/p/[slug]/PublicPageClient.tsx`, `app/api/reacao/route.ts`, `lib/email.ts`, `supabase/schema.sql` (`reacao_texto`).
+- **O que muda:** após o emoji (que continua sendo o passo garantido), campo opcional "Quer dizer com as suas palavras?" com saída "Só o ❤️ já diz tudo →". Primeiro texto → e-mail "{nome} escreveu de volta." com o texto sozinho em serif + convite à Recordação.
+- **Aceite:** emoji sem texto funciona como antes (1 e-mail); texto enviado 2x → 1 único segundo e-mail (transição atômica); campo nunca bloqueia a confirmação.
+
+### T4.4 🔴 Microcopy tela a tela
+- **Arquivos:** `app/criar/page.tsx`, `app/preview/[id]/page.tsx`, `components/CountdownReveal.tsx`, `app/p/[slug]/PublicPageClient.tsx`.
+- **O que muda:** subtítulo do formulário ("A gente pergunta. Você lembra. Ele se emociona."), loading ("Guardando cada palavra..."), sucesso ("Pronto. Agora a parte boa é sua."), countdown ("tem algo aqui esperando por você." / "Vale a pena voltar. Prometo."), convite ("Isso aqui foi feito pra você. Só pra você."), prompt de reação ("Quem fez isso pra você está esperando pra saber se chegou."), confirmação ("Chegou. Pode deixar que a gente conta.").
+- **Aceite:** nenhum texto que *anuncie* emoção; na página do pai, nada com voz de plataforma.
+
+### T4.5 🔴 A Carta / A Recordação (PDF)
+- **Arquivos:** `app/preview/[id]/page.tsx` (jsPDF A4), `app/api/paginas/[id]/route.ts` (expõe reação ao dono do preview), `lib/email.ts` (convite no e-mail de texto).
+- **O que muda:** botão na tela de sucesso gera PDF-carta com blocos na ordem narrativa + fechamento; quando `reacao_texto` existe, inclui "E a resposta dele" e vira "Recordação". Rodapé: *"A página expira. A carta, não."*
+- **Aceite:** PDF multi-página com texto longo sem cortes; sem reação → "Carta"; com resposta → "Recordação" com o texto do pai; emoji não vai ao PDF (fontes PDF não têm o glifo — só o texto).
+
+---
+
 ## Decisões que dependem do dono do produto (não são código)
 
 Estas travam tarefas se atrasarem — todas têm lead time externo (DNS, verificação de conta, etc.):

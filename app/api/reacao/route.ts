@@ -1,22 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabaseAdmin';
-import { sendReactionEmail } from '@/lib/email';
-import { EMOJIS_REACAO } from '@/lib/config';
+import { sendReactionEmail, sendReactionTextEmail } from '@/lib/email';
+import { EMOJIS_REACAO, MAX_REACAO_TEXTO } from '@/lib/config';
 import { aindaNaoRevelada } from '@/lib/types';
 import { rateLimit } from '@/lib/rateLimit';
 
 export const dynamic = 'force-dynamic';
 
 /**
- * Reação do destinatário (RF16/T2.7): 1 toque, sem cadastro.
- * A PRIMEIRA reação dispara e-mail ao comprador; as seguintes só atualizam
- * o emoji. A reação nunca é exposta publicamente.
+ * Reação do destinatário (RF16/T2.7/Fase 4): emoji de 1 toque, sem cadastro,
+ * mais texto livre OPCIONAL enviado depois (revelação progressiva).
+ * A PRIMEIRA reação dispara e-mail ao comprador; o PRIMEIRO texto dispara um
+ * segundo e-mail ("escreveu de volta"). Nada é exposto publicamente.
  */
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const slug = typeof body?.slug === 'string' ? body.slug.trim() : '';
     const emoji = typeof body?.emoji === 'string' ? body.emoji.trim() : '';
+    const texto =
+      typeof body?.texto === 'string' ? body.texto.trim().slice(0, MAX_REACAO_TEXTO) : '';
 
     if (!slug || !EMOJIS_REACAO.includes(emoji)) {
       return NextResponse.json({ error: 'Reação inválida.' }, { status: 400 });
@@ -33,7 +36,9 @@ export async function POST(req: NextRequest) {
 
     const { data: pagina, error } = await supabaseAdmin
       .from('paginas')
-      .select('id, slug, pago, revelar_em, reacao_em, email_comprador, nome_destinatario')
+      .select(
+        'id, slug, pago, revelar_em, reacao_em, reacao_texto, email_comprador, nome_destinatario'
+      )
       .eq('slug', slug)
       .eq('pago', true)
       .single();
@@ -66,6 +71,27 @@ export async function POST(req: NextRequest) {
         emoji,
         slug
       );
+    }
+
+    // Texto opcional (Fase 4): primeira gravação dispara o segundo e-mail
+    // ("escreveu de volta") — transição atômica em reacao_texto.
+    if (texto) {
+      const { data: primeiroTexto } = await supabaseAdmin
+        .from('paginas')
+        .update({ reacao_texto: texto })
+        .eq('id', pagina.id)
+        .is('reacao_texto', null)
+        .select('id')
+        .maybeSingle();
+
+      if (primeiroTexto && pagina.email_comprador) {
+        await sendReactionTextEmail(
+          pagina.email_comprador,
+          pagina.nome_destinatario || 'Seu pai',
+          texto,
+          pagina.id
+        );
+      }
     }
 
     return NextResponse.json({ ok: true });

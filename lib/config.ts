@@ -51,8 +51,9 @@ export interface PerguntaGuiada {
 
 /**
  * Roteiro das perguntas guiadas (visão §2, gatilho 1 — Efeito IKEA).
- * Roteiro inicial pendente de aprovação (decisão D9) — trocar aqui não exige
- * mudança em nenhum outro arquivo.
+ * Roteiro aprovado em 14/07/2026 (Fase 4). Trocar aqui não exige mudança em
+ * nenhum outro arquivo. O teste de cada pergunta: é impossível respondê-la
+ * com uma frase de cartão de presente?
  */
 export const PERGUNTAS_GUIADAS: PerguntaGuiada[] = [
   {
@@ -63,27 +64,47 @@ export const PERGUNTAS_GUIADAS: PerguntaGuiada[] = [
     placeholder: 'Escreve do jeito que ele fala...',
   },
   {
-    id: 'orgulho',
+    id: 'hoje_entendo',
     pergunta:
-      'Conta uma vez em que ele demonstrou orgulho de você sem dizer uma palavra.',
-    titulo: 'Você achou que eu não vi, mas…',
-    placeholder: 'Pode ser um olhar, um gesto, um silêncio...',
+      'O que ele fazia que te irritava quando você era criança — e que hoje, adulto, você entende?',
+    titulo: 'Hoje eu entendo',
+    placeholder: 'Pode ser pequeno: um hábito, uma regra, um jeito de fazer as coisas...',
   },
   {
-    id: 'lembranca',
+    id: 'nao_vi',
     pergunta:
-      'Se você pudesse guardar só uma lembrança de vocês dois, qual seria?',
-    titulo: 'A lembrança que eu guardo',
-    placeholder: 'Onde vocês estavam? O que aconteceu?',
+      'Lembra de uma vez em que ele estava exausto e mesmo assim fez algo por você? Ele achou que ninguém notou.',
+    titulo: 'Você achou que eu não vi',
+    placeholder: 'Conta esse dia do jeito que você lembra...',
   },
   {
     id: 'nunca_disse',
     pergunta:
-      'O que você quer que ele saiba, mas nunca conseguiu falar olhando pra ele?',
+      'O que você nunca conseguiu falar olhando pra ele? Escreve aqui. Ele vai ler.',
     titulo: 'O que eu nunca te disse',
     placeholder: 'Aqui ninguém está olhando. Pode falar.',
   },
 ];
+
+/**
+ * Ordem narrativa dos blocos na página (Fase 4): riso primeiro (baixa a
+ * guarda), aprofundamento no meio, confissão como clímax no fim. Ids
+ * legados ('orgulho', 'lembranca') mantidos para páginas antigas.
+ */
+export const ORDEM_NARRATIVA = [
+  'frase',
+  'orgulho',
+  'lembranca',
+  'hoje_entendo',
+  'nao_vi',
+  'nunca_disse',
+];
+
+/** Bloco tratado como clímax visual da página (mais respiro, tipografia maior). */
+export const BLOCO_CLIMAX = 'nunca_disse';
+
+/** Tamanho máximo do texto de reação do destinatário (RF16). */
+export const MAX_REACAO_TEXTO = 280;
 
 /** Mínimo de blocos respondidos (ou mensagem final) para poder avançar. */
 export const MIN_BLOCOS = 2;

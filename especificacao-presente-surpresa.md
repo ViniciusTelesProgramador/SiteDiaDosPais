@@ -51,7 +51,8 @@
 - 1 tema visual garantido ("Clássico"); segundo tema ("Descontraído") apenas se o prazo permitir
 - **Revelação agendada** (opcional): página exibe contagem regressiva até a data escolhida (padrão 09/08) e só revela o conteúdo a partir dela — *prioridade alta, faz parte do MVP mesmo que custe o segundo tema*
 - **Cerimônia de revelação** (visão §5, camada intermediária): toque para "abrir o presente", nome do destinatário aparece sozinho por 1–2s, transição suave — nunca troca instantânea de tela
-- **Reação do destinatário** (visão §2, gatilho 3): emoji de 1 toque na página revelada, que dispara e-mail ao comprador ("seu pai abriu e reagiu ❤️") — fecha o ciclo emocional
+- **Reação do destinatário** (visão §2, gatilho 3): emoji de 1 toque na página revelada + texto livre opcional depois do toque — a primeira reação e o primeiro texto disparam e-mails ao comprador, fechando o ciclo emocional em dois picos
+- **A Carta / Recordação (PDF)**: as palavras do comprador (e a resposta do pai, quando existir) diagramadas como carta A4 para imprimir e guardar — permanência além da tela
 - Preview ao vivo do tema dentro do próprio formulário (sem etapa separada de escolha)
 - Pagamento único via Pix (Mercado Pago), com tela de status que confirma sozinha (polling)
 - Geração de slug único + QR code após confirmação do pagamento
@@ -97,7 +98,8 @@
 | RF13 | A página pública deve registrar visualizações: incrementar contador e gravar `primeira_visualizacao_em` uma única vez (métrica do loop viral) |
 | RF14 | O funil deve emitir eventos de analytics por etapa: visita na landing → iniciou formulário → chegou ao preview → iniciou pagamento → pagou (com UTM de origem) |
 | RF15 | **Cerimônia de revelação**: a abertura do conteúdo exige um toque ("abrir o presente"); o nome do destinatário aparece sozinho por 1–2s antes do conteúdo; transição suave, nunca instantânea. O toque é o único gesto que pode habilitar som sutil (navegadores móveis bloqueiam autoplay); sem asset de som aprovado, silêncio |
-| RF16 | **Reação do destinatário**: a página revelada oferece reação por emoji (1 toque, sem cadastro, não pública). A **primeira** reação dispara e-mail ao comprador ("seu pai abriu e reagiu ❤️"); reações seguintes atualizam o emoji sem novo e-mail |
+| RF16 | **Reação do destinatário**: a página revelada oferece reação por emoji (1 toque, sem cadastro, não pública). A **primeira** reação dispara e-mail ao comprador; reações seguintes atualizam o emoji sem novo e-mail. Após o toque, um campo de texto livre **opcional** ("Quer dizer com as suas palavras?") é revelado — nunca bloqueante; o **primeiro** texto dispara um segundo e-mail ("{nome} escreveu de volta"), com o texto do pai em destaque |
+| RF17 | **A Carta / A Recordação (permanência)**: na tela de sucesso, o comprador pode baixar um PDF A4 com os blocos e a mensagem diagramados como carta (na ordem narrativa da página). Quando o destinatário já escreveu de volta, a resposta entra na mesma folha e o documento vira a "Recordação" — os dois lados da conversa em um único objeto imprimível |
 
 ---
 
@@ -152,7 +154,7 @@
 - `expira_em` (timestamp — `pago_em` + 12 meses para pagas; `criado_em` + 7 dias para rascunhos)
 - `visualizacoes` (integer, default 0)
 - `primeira_visualizacao_em` (timestamp, nullable — mede se/quando o pai abriu)
-- `reacao_emoji` (text, nullable) e `reacao_em` (timestamp, nullable — primeira reação do destinatário)
+- `reacao_emoji` (text, nullable), `reacao_texto` (text, nullable — resposta livre opcional do destinatário) e `reacao_em` (timestamp, nullable — primeira reação)
 - `lembrete_enviado_em` (timestamp, nullable — controle do lembrete pré-revelação, se implementado)
 - `criado_em` (timestamp)
 

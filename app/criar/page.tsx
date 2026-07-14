@@ -278,8 +278,7 @@ export default function CriarPresente() {
             Crie um Recado Surpresa
           </h1>
           <p className="mt-2 text-base text-gray-600">
-            Você não precisa &quot;escrever bonito&quot;. A gente pergunta, você responde — e o
-            presente toma forma sozinho.
+            A gente pergunta. Você lembra. Ele se emociona.
           </p>
         </div>
 
@@ -423,9 +422,12 @@ export default function CriarPresente() {
                     maxLength={1500}
                     className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all placeholder:text-gray-400 bg-gray-50/50 hover:bg-gray-50 focus:bg-white resize-none"
                   />
-                  <p className="text-xs text-gray-400 mt-1.5">
-                    Sua resposta vira o bloco <strong>&quot;{pergunta.titulo}&quot;</strong> na
-                    página. Escreva do seu jeito — sem pergunta aparecendo, só a resposta.
+                  <p className="text-xs text-gray-500 mt-1.5 italic">
+                    Não precisa ser bonito. Precisa ser verdade.
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    Vira o bloco <strong>&quot;{pergunta.titulo}&quot;</strong> na página — só a
+                    sua resposta aparece, nunca a pergunta.
                   </p>
                 </div>
 
@@ -567,7 +569,7 @@ export default function CriarPresente() {
                               type="text"
                               value={foto.legenda}
                               onChange={(e) => atualizarLegenda(index, e.target.value)}
-                              placeholder="Legenda (opcional): onde foi? o que estava acontecendo?"
+                              placeholder="Que dia foi esse? O que você lembra dele? (opcional)"
                               maxLength={140}
                               className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none bg-white placeholder:text-gray-400"
                             />
@@ -725,7 +727,7 @@ export default function CriarPresente() {
                     {loading ? (
                       <>
                         <Loader2 className="w-5 h-5 animate-spin" />
-                        <span>Criando...</span>
+                        <span>Guardando cada palavra...</span>
                       </>
                     ) : (
                       <>

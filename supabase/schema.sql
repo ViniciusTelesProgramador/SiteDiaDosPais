@@ -38,8 +38,9 @@ create table if not exists public.paginas (
   expira_em timestamptz,
   visualizacoes integer not null default 0,
   primeira_visualizacao_em timestamptz,
-  -- reação do destinatário (RF16)
+  -- reação do destinatário (RF16): emoji de 1 toque + texto livre opcional
   reacao_emoji text,
+  reacao_texto text,
   reacao_em timestamptz,
   -- lembrete pré-revelação (T2.8)
   lembrete_enviado_em timestamptz,
@@ -69,6 +70,7 @@ alter table public.paginas add column if not exists expira_em timestamptz;
 alter table public.paginas add column if not exists visualizacoes integer not null default 0;
 alter table public.paginas add column if not exists primeira_visualizacao_em timestamptz;
 alter table public.paginas add column if not exists reacao_emoji text;
+alter table public.paginas add column if not exists reacao_texto text;
 alter table public.paginas add column if not exists reacao_em timestamptz;
 alter table public.paginas add column if not exists lembrete_enviado_em timestamptz;
 alter table public.pagamentos add column if not exists criado_em timestamptz not null default now();

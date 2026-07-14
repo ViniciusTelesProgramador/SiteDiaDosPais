@@ -51,9 +51,13 @@ export default function PublicPageClient({
   const [fase, setFase] = useState<FaseCerimonia>('convite');
   const [conteudoVisivel, setConteudoVisivel] = useState(false);
 
-  // Reação (T2.7)
+  // Reação (T2.7/Fase 4): emoji de 1 toque + texto livre opcional depois
   const [reacaoEnviada, setReacaoEnviada] = useState<string | null>(null);
   const [reacaoLoading, setReacaoLoading] = useState(false);
+  const [reacaoTexto, setReacaoTexto] = useState('');
+  const [textoEnviado, setTextoEnviado] = useState(false);
+  const [textoDispensado, setTextoDispensado] = useState(false);
+  const [textoLoading, setTextoLoading] = useState(false);
 
   // Compartilhar (T2.4)
   const [compartilhado, setCompartilhado] = useState(false);
@@ -121,6 +125,31 @@ export default function PublicPageClient({
       console.error('Erro ao enviar reação:', err);
     } finally {
       setReacaoLoading(false);
+    }
+  };
+
+  const enviarTextoReacao = async () => {
+    const texto = reacaoTexto.trim();
+    if (!texto || textoLoading || !reacaoEnviada) return;
+    setTextoLoading(true);
+    try {
+      if (data?.isMock) {
+        setTextoEnviado(true);
+        return;
+      }
+      const response = await fetch('/api/reacao', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug, emoji: reacaoEnviada, texto }),
+      });
+      if (response.ok) {
+        setTextoEnviado(true);
+        track('reagiu_texto');
+      }
+    } catch (err) {
+      console.error('Erro ao enviar texto da reação:', err);
+    } finally {
+      setTextoLoading(false);
     }
   };
 
@@ -220,14 +249,14 @@ export default function PublicPageClient({
                 classico ? 'font-normal' : 'font-extrabold text-teal-950'
               }`}
             >
-              Alguém preparou uma surpresa para você.
+              Isso aqui foi feito pra você. Só pra você.
             </h1>
             <p
               className={`text-sm tracking-wide ${
                 classico ? 'text-[#8C7A5C] uppercase tracking-widest' : 'text-teal-700/70 font-bold uppercase'
               }`}
             >
-              Toque para abrir o presente
+              Toque para abrir
             </p>
           </div>
         </button>
@@ -272,6 +301,7 @@ export default function PublicPageClient({
         }`}
       >
         <PageRenderer
+          cerimonia
           conteudo={{
             nome_destinatario: data.nome_destinatario,
             mensagem: data.mensagem,
@@ -287,17 +317,11 @@ export default function PublicPageClient({
             classico ? 'bg-[#FAF8F5] border-[#E5E0D5]' : 'bg-white/80 border-teal-100'
           }`}
         >
-          {reacaoEnviada ? (
-            <div className="space-y-1">
-              <div className="text-3xl">{reacaoEnviada}</div>
-              <p className={`text-sm ${classico ? 'text-[#6B5D45] italic' : 'text-teal-800 font-medium'}`}>
-                Recado enviado. Quem preparou isso vai saber que você abriu.
-              </p>
-            </div>
-          ) : (
+          {!reacaoEnviada ? (
+            /* Passo 1: emoji de 1 toque (fricção zero) */
             <div className="space-y-4">
               <p className={`text-sm ${classico ? 'text-[#6B5D45]' : 'text-teal-800/80 font-medium'}`}>
-                Deixe um recado de volta — um toque basta.
+                Quem fez isso pra você está esperando pra saber se chegou. Um toque basta.
               </p>
               <div className="flex justify-center gap-3">
                 {EMOJIS_REACAO.map((emoji) => (
@@ -315,6 +339,55 @@ export default function PublicPageClient({
                     {emoji}
                   </button>
                 ))}
+              </div>
+            </div>
+          ) : textoEnviado || textoDispensado ? (
+            /* Passo 3: confirmação final */
+            <div className="space-y-1">
+              <div className="text-3xl">{reacaoEnviada}</div>
+              <p className={`text-sm ${classico ? 'text-[#6B5D45] italic' : 'text-teal-800 font-medium'}`}>
+                Chegou. Pode deixar que a gente conta.
+              </p>
+            </div>
+          ) : (
+            /* Passo 2: o toque já valeu — o texto é bônus opcional */
+            <div className="space-y-4">
+              <div className="text-4xl">{reacaoEnviada}</div>
+              <p className={`text-sm ${classico ? 'text-[#6B5D45]' : 'text-teal-800/80 font-medium'}`}>
+                Quer dizer com as suas palavras? Pode ser curtinho.
+              </p>
+              <textarea
+                value={reacaoTexto}
+                onChange={(e) => setReacaoTexto(e.target.value)}
+                placeholder="Escreve do seu jeito."
+                rows={2}
+                maxLength={280}
+                className={`w-full px-4 py-3 rounded-2xl text-base outline-none resize-none transition-all ${
+                  classico
+                    ? 'bg-white border border-[#E5E0D5] text-[#2C2A27] focus:border-[#8C7A5C] placeholder:text-[#B5A88F]'
+                    : 'bg-white border border-teal-100 text-teal-950 focus:border-teal-400 placeholder:text-teal-700/40'
+                }`}
+              />
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={enviarTextoReacao}
+                  disabled={textoLoading || !reacaoTexto.trim()}
+                  className={`w-full py-3 rounded-full text-sm font-semibold transition-all active:scale-95 disabled:opacity-40 ${
+                    classico ? 'bg-[#2C2A27] text-[#FAF8F5]' : 'bg-teal-900 text-white'
+                  }`}
+                >
+                  {textoLoading ? 'Enviando...' : 'Enviar'}
+                </button>
+                <button
+                  onClick={() => setTextoDispensado(true)}
+                  className={`text-xs transition-colors ${
+                    classico
+                      ? 'text-[#8C7A5C] hover:text-[#6B5D45]'
+                      : 'text-teal-700/60 hover:text-teal-800 font-medium'
+                  }`}
+                >
+                  Só o {reacaoEnviada} já diz tudo →
+                </button>
               </div>
             </div>
           )}

@@ -88,10 +88,10 @@ export default function CountdownReveal({
             {nomeDestinatario},
           </div>
           <h1 className={`text-2xl sm:text-3xl leading-snug ${classico ? 'font-normal' : 'font-extrabold text-teal-950'}`}>
-            alguém preparou uma surpresa para você.
+            tem algo aqui esperando por você.
           </h1>
           <p className={`text-sm ${classico ? 'text-[#6B5D45]' : 'text-teal-800/70'}`}>
-            Ela se revela em {dataFormatada}.
+            Abre em {dataFormatada}.
           </p>
         </div>
 
@@ -124,7 +124,7 @@ export default function CountdownReveal({
         )}
 
         <p className={`text-xs ${classico ? 'text-[#8C7A5C]' : 'text-teal-700/50 font-medium'}`}>
-          Guarde este link e volte no dia.
+          Vale a pena voltar. Prometo.
         </p>
       </div>
     </div>

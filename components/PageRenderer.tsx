@@ -1,14 +1,22 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { Heart } from 'lucide-react';
-import type { Bloco, Midia } from '@/lib/types';
+import { ORDEM_NARRATIVA, BLOCO_CLIMAX } from '@/lib/config';
+import { ordenarBlocosNarrativa, type Bloco, type Midia } from '@/lib/types';
 
 /**
  * Renderização visual da página do presente — componente único usado pelo
  * preview ao vivo do formulário, pela tela /preview/[id] e pela página
  * pública /p/[slug] (T1.3): mudou aqui, mudou nos três lugares.
+ *
+ * Ordem narrativa (Fase 4, visão §5): riso primeiro ("A frase que é a sua
+ * cara"), fotos como meio morno, aprofundamento, e "O que eu nunca te
+ * disse" como clímax destacado; a mensagem final fecha como assinatura.
+ *
+ * `cerimonia` liga o fade por scroll (só na página pública — no preview de
+ * edição o conteúdo aparece direto).
  *
  * Anti-cringe (visão §7): sem confete, sem emojis flutuantes, sem frases
  * prontas — todo texto emocional vem dos blocos/mensagem do comprador.
@@ -20,6 +28,56 @@ export interface ConteudoPagina {
   blocos?: Bloco[] | null;
   midias: Midia[];
   tema: string;
+}
+
+/** Fade suave quando a seção entra na viewport (leitor controla o ritmo). */
+function Reveal({
+  ativo,
+  atrasoMs = 0,
+  children,
+}: {
+  ativo: boolean;
+  atrasoMs?: number;
+  children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [visivel, setVisivel] = useState(!ativo);
+
+  useEffect(() => {
+    if (!ativo) return;
+    const el = ref.current;
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      setVisivel(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisivel(true);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.15, rootMargin: '0px 0px -8% 0px' }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [ativo]);
+
+  return (
+    <div
+      ref={ref}
+      className={
+        ativo
+          ? `transition-all duration-700 ease-out ${
+              visivel ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+            }`
+          : undefined
+      }
+      style={ativo && atrasoMs ? { transitionDelay: `${atrasoMs}ms` } : undefined}
+    >
+      {children}
+    </div>
+  );
 }
 
 function FotoComLegenda({
@@ -79,10 +137,76 @@ function FotoComLegenda({
   );
 }
 
-export default function PageRenderer({ conteudo }: { conteudo: ConteudoPagina }) {
+export default function PageRenderer({
+  conteudo,
+  cerimonia = false,
+}: {
+  conteudo: ConteudoPagina;
+  cerimonia?: boolean;
+}) {
   const classico = conteudo.tema !== 'descontraido';
-  const blocos = conteudo.blocos || [];
+  const ordenados = ordenarBlocosNarrativa(conteudo.blocos, ORDEM_NARRATIVA);
   const temMensagem = Boolean(conteudo.mensagem?.trim());
+
+  // Ordem narrativa: abertura (frase) -> fotos -> aprofundamento -> clímax
+  const abertura = ordenados.filter((b) => b.pergunta_id === 'frase');
+  const climax = ordenados.filter((b) => b.pergunta_id === BLOCO_CLIMAX);
+  const meio = ordenados.filter(
+    (b) => b.pergunta_id !== 'frase' && b.pergunta_id !== BLOCO_CLIMAX
+  );
+
+  const BlocoClassico = ({ bloco }: { bloco: Bloco }) => (
+    <div className="space-y-3">
+      <div className="text-[#8C7A5C] text-xs tracking-[0.2em] uppercase text-center">
+        {bloco.titulo}
+      </div>
+      <p className="text-[#3A3530] text-base sm:text-lg leading-relaxed whitespace-pre-line text-center">
+        {bloco.texto}
+      </p>
+    </div>
+  );
+
+  const BlocoDescontraido = ({ bloco }: { bloco: Bloco }) => (
+    <div className="bg-teal-50/50 border border-teal-100 rounded-3xl p-5 sm:p-7 space-y-2">
+      <div className="text-emerald-700 text-xs font-extrabold tracking-wider uppercase">
+        {bloco.titulo}
+      </div>
+      <p className="text-teal-950 text-base sm:text-lg leading-relaxed whitespace-pre-line font-medium">
+        {bloco.texto}
+      </p>
+    </div>
+  );
+
+  // Clímax: mais respiro antes, título entra primeiro, texto num segundo
+  // fôlego (atraso de 500ms), tipografia um ponto maior.
+  const BlocoClimax = ({ bloco }: { bloco: Bloco }) =>
+    classico ? (
+      <div className="pt-10 space-y-5">
+        <Reveal ativo={cerimonia}>
+          <div className="text-[#8C7A5C] text-xs tracking-[0.25em] uppercase text-center">
+            {bloco.titulo}
+          </div>
+        </Reveal>
+        <Reveal ativo={cerimonia} atrasoMs={500}>
+          <p className="text-[#2C2A27] text-lg sm:text-xl leading-loose whitespace-pre-line text-center">
+            {bloco.texto}
+          </p>
+        </Reveal>
+      </div>
+    ) : (
+      <div className="pt-10 space-y-5">
+        <Reveal ativo={cerimonia}>
+          <div className="text-emerald-800 text-xs font-extrabold tracking-[0.25em] uppercase text-center">
+            {bloco.titulo}
+          </div>
+        </Reveal>
+        <Reveal ativo={cerimonia} atrasoMs={500}>
+          <p className="text-teal-950 text-lg sm:text-xl leading-loose whitespace-pre-line text-center font-medium">
+            {bloco.texto}
+          </p>
+        </Reveal>
+      </div>
+    );
 
   if (classico) {
     return (
@@ -95,51 +219,66 @@ export default function PageRenderer({ conteudo }: { conteudo: ConteudoPagina })
 
           <div className="space-y-10">
             {/* Cabeçalho */}
-            <div className="text-center">
-              <div className="text-[#8C7A5C] text-sm tracking-widest uppercase mb-2">
-                Com amor para
-              </div>
-              <h1 className="text-3xl sm:text-4xl font-normal text-[#1A1817] leading-tight">
-                {conteudo.nome_destinatario}
-              </h1>
-              <div className="w-12 h-px bg-[#8C7A5C] mx-auto mt-4"></div>
-            </div>
-
-            {/* Blocos das perguntas guiadas */}
-            {blocos.map((bloco) => (
-              <div key={bloco.pergunta_id} className="space-y-3">
-                <div className="text-[#8C7A5C] text-xs tracking-[0.2em] uppercase text-center">
-                  {bloco.titulo}
+            <Reveal ativo={cerimonia}>
+              <div className="text-center">
+                <div className="text-[#8C7A5C] text-sm tracking-widest uppercase mb-2">
+                  Com amor para
                 </div>
-                <p className="text-[#3A3530] text-base sm:text-lg leading-relaxed whitespace-pre-line text-center">
-                  {bloco.texto}
-                </p>
+                <h1 className="text-3xl sm:text-4xl font-normal text-[#1A1817] leading-tight">
+                  {conteudo.nome_destinatario}
+                </h1>
+                <div className="w-12 h-px bg-[#8C7A5C] mx-auto mt-4"></div>
               </div>
+            </Reveal>
+
+            {/* Abertura: o riso primeiro */}
+            {abertura.map((bloco) => (
+              <Reveal key={bloco.pergunta_id} ativo={cerimonia}>
+                <BlocoClassico bloco={bloco} />
+              </Reveal>
             ))}
 
-            {/* Fotos com legenda */}
+            {/* Fotos: o meio morno da memória */}
             {conteudo.midias.length > 0 && (
               <div className="space-y-8">
                 {conteudo.midias.map((midia, idx) => (
-                  <FotoComLegenda key={idx} midia={midia} idx={idx} classico />
+                  <Reveal key={idx} ativo={cerimonia}>
+                    <FotoComLegenda midia={midia} idx={idx} classico />
+                  </Reveal>
                 ))}
               </div>
             )}
 
-            {/* Mensagem de fechamento */}
+            {/* Aprofundamento */}
+            {meio.map((bloco) => (
+              <Reveal key={bloco.pergunta_id} ativo={cerimonia}>
+                <BlocoClassico bloco={bloco} />
+              </Reveal>
+            ))}
+
+            {/* Clímax */}
+            {climax.map((bloco) => (
+              <BlocoClimax key={bloco.pergunta_id} bloco={bloco} />
+            ))}
+
+            {/* Fechamento: curto, como assinatura */}
             {temMensagem && (
-              <div className="text-[#3A3530] text-base sm:text-lg leading-relaxed whitespace-pre-line pl-3 border-l-2 border-[#D1C9BA]/60 italic">
-                {conteudo.mensagem}
-              </div>
+              <Reveal ativo={cerimonia}>
+                <div className="text-[#3A3530] text-base sm:text-lg leading-relaxed whitespace-pre-line pl-3 border-l-2 border-[#D1C9BA]/60 italic">
+                  {conteudo.mensagem}
+                </div>
+              </Reveal>
             )}
 
             {/* Rodapé */}
-            <div className="text-center pt-2">
-              <Heart className="w-5 h-5 text-red-800/70 mx-auto fill-current" />
-              <div className="text-xs text-[#8C7A5C] tracking-wider uppercase mt-2">
-                Feliz Dia dos Pais
+            <Reveal ativo={cerimonia}>
+              <div className="text-center pt-2">
+                <Heart className="w-5 h-5 text-red-800/70 mx-auto fill-current" />
+                <div className="text-xs text-[#8C7A5C] tracking-wider uppercase mt-2">
+                  Feliz Dia dos Pais
+                </div>
               </div>
-            </div>
+            </Reveal>
           </div>
         </div>
       </div>
@@ -151,53 +290,65 @@ export default function PageRenderer({ conteudo }: { conteudo: ConteudoPagina })
     <div className="bg-white/90 backdrop-blur-md border border-teal-50 p-6 sm:p-10 rounded-3xl shadow-2xl shadow-emerald-100/50 font-sans text-[#1E302E]">
       <div className="space-y-10">
         {/* Cabeçalho */}
-        <div className="text-center">
-          <div className="text-emerald-700/70 text-xs font-bold tracking-[0.2em] uppercase mb-2">
-            Para você
-          </div>
-          <h1 className="text-3xl sm:text-4xl font-black text-teal-950 tracking-tight leading-none">
-            {conteudo.nome_destinatario}
-          </h1>
-        </div>
-
-        {/* Blocos das perguntas guiadas */}
-        {blocos.map((bloco) => (
-          <div
-            key={bloco.pergunta_id}
-            className="bg-teal-50/50 border border-teal-100 rounded-3xl p-5 sm:p-7 space-y-2"
-          >
-            <div className="text-emerald-700 text-xs font-extrabold tracking-wider uppercase">
-              {bloco.titulo}
+        <Reveal ativo={cerimonia}>
+          <div className="text-center">
+            <div className="text-emerald-700/70 text-xs font-bold tracking-[0.2em] uppercase mb-2">
+              Para você
             </div>
-            <p className="text-teal-950 text-base sm:text-lg leading-relaxed whitespace-pre-line font-medium">
-              {bloco.texto}
-            </p>
+            <h1 className="text-3xl sm:text-4xl font-black text-teal-950 tracking-tight leading-none">
+              {conteudo.nome_destinatario}
+            </h1>
           </div>
+        </Reveal>
+
+        {/* Abertura: o riso primeiro */}
+        {abertura.map((bloco) => (
+          <Reveal key={bloco.pergunta_id} ativo={cerimonia}>
+            <BlocoDescontraido bloco={bloco} />
+          </Reveal>
         ))}
 
-        {/* Fotos com legenda */}
+        {/* Fotos */}
         {conteudo.midias.length > 0 && (
           <div className="flex flex-wrap gap-5 justify-center py-2">
             {conteudo.midias.map((midia, idx) => (
-              <FotoComLegenda key={idx} midia={midia} idx={idx} classico={false} />
+              <Reveal key={idx} ativo={cerimonia}>
+                <FotoComLegenda midia={midia} idx={idx} classico={false} />
+              </Reveal>
             ))}
           </div>
         )}
 
-        {/* Mensagem de fechamento */}
+        {/* Aprofundamento */}
+        {meio.map((bloco) => (
+          <Reveal key={bloco.pergunta_id} ativo={cerimonia}>
+            <BlocoDescontraido bloco={bloco} />
+          </Reveal>
+        ))}
+
+        {/* Clímax */}
+        {climax.map((bloco) => (
+          <BlocoClimax key={bloco.pergunta_id} bloco={bloco} />
+        ))}
+
+        {/* Fechamento */}
         {temMensagem && (
-          <div className="bg-white border border-emerald-100 rounded-3xl p-5 sm:p-7 text-teal-950 text-base sm:text-lg leading-relaxed whitespace-pre-line shadow-sm font-medium">
-            {conteudo.mensagem}
-          </div>
+          <Reveal ativo={cerimonia}>
+            <div className="bg-white border border-emerald-100 rounded-3xl p-5 sm:p-7 text-teal-950 text-base sm:text-lg leading-relaxed whitespace-pre-line shadow-sm font-medium">
+              {conteudo.mensagem}
+            </div>
+          </Reveal>
         )}
 
         {/* Rodapé */}
-        <div className="text-center pt-2 border-t border-teal-50">
-          <Heart className="w-5 h-5 text-rose-500 mx-auto fill-current mt-4" />
-          <div className="text-xs font-bold text-teal-700/70 tracking-widest uppercase mt-2">
-            Feliz Dia dos Pais
+        <Reveal ativo={cerimonia}>
+          <div className="text-center pt-2 border-t border-teal-50">
+            <Heart className="w-5 h-5 text-rose-500 mx-auto fill-current mt-4" />
+            <div className="text-xs font-bold text-teal-700/70 tracking-widest uppercase mt-2">
+              Feliz Dia dos Pais
+            </div>
           </div>
-        </div>
+        </Reveal>
       </div>
     </div>
   );

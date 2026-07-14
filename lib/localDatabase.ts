@@ -20,6 +20,7 @@ export interface PageDraft {
   slug?: string;
   revelar_em?: string | null;
   reacao_emoji?: string | null;
+  reacao_texto?: string | null;
   isMock?: boolean;
   criado_em?: string;
 }

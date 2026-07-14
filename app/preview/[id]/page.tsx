@@ -3,8 +3,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { getDraftFromIndexedDB, saveDraftToIndexedDB, type PageDraft } from '@/lib/localDatabase';
-import { normalizarMidias, normalizarTema } from '@/lib/types';
-import { PRECO_UNICO_FORMATADO } from '@/lib/config';
+import { normalizarMidias, normalizarTema, ordenarBlocosNarrativa } from '@/lib/types';
+import { PRECO_UNICO_FORMATADO, ORDEM_NARRATIVA } from '@/lib/config';
 import { track } from '@/lib/analytics';
 import PageRenderer from '@/components/PageRenderer';
 import QRCode from 'qrcode';
@@ -284,6 +284,121 @@ export default function PreviewPagina() {
     doc.save(`cartao-presente-dia-dos-pais-${generatedSlug}.pdf`);
   };
 
+  /**
+   * A Carta / A Recordação (Fase 4): PDF A4 com os blocos e a mensagem
+   * diagramados como carta — "a página expira; a carta, não". Quando o pai
+   * já escreveu de volta, a resposta dele entra na mesma folha e o
+   * documento vira a Recordação: o único objeto com os dois lados.
+   */
+  const temResposta = Boolean(draft?.reacao_texto?.trim());
+
+  const downloadCartaPDF = () => {
+    if (!draft) return;
+
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const margemX = 28;
+    const larguraTexto = 210 - margemX * 2;
+    const limiteY = 265;
+    let y = 0;
+
+    const novaPagina = () => {
+      doc.addPage();
+      doc.setDrawColor(210, 195, 170);
+      doc.setLineWidth(0.4);
+      doc.rect(12, 12, 186, 273);
+      y = 30;
+    };
+
+    const garantirEspaco = (altura: number) => {
+      if (y + altura > limiteY) novaPagina();
+    };
+
+    const escreverParagrafo = (texto: string, tamanho: number, estilo: string) => {
+      doc.setFont('Times', estilo);
+      doc.setFontSize(tamanho);
+      const linhas: string[] = doc.splitTextToSize(texto, larguraTexto);
+      const alturaLinha = tamanho * 0.55;
+      for (const linha of linhas) {
+        garantirEspaco(alturaLinha);
+        doc.text(linha, 105, y, { align: 'center' });
+        y += alturaLinha;
+      }
+    };
+
+    const escreverTitulo = (titulo: string) => {
+      garantirEspaco(18);
+      y += 8;
+      doc.setFont('Times', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(140, 122, 92);
+      doc.text(titulo.toUpperCase(), 105, y, { align: 'center', charSpace: 1 });
+      doc.setTextColor(44, 42, 39);
+      y += 7;
+    };
+
+    // Moldura da primeira página
+    doc.setDrawColor(210, 195, 170);
+    doc.setLineWidth(0.4);
+    doc.rect(12, 12, 186, 273);
+    y = 34;
+
+    // Cabeçalho
+    doc.setTextColor(140, 122, 92);
+    doc.setFont('Times', 'normal');
+    doc.setFontSize(9);
+    doc.text('DIA DOS PAIS — 2026', 105, y, { align: 'center', charSpace: 1.5 });
+    y += 12;
+    doc.setTextColor(26, 24, 23);
+    doc.setFont('Times', 'italic');
+    doc.setFontSize(24);
+    doc.text(`Para ${draft.nome_destinatario},`, 105, y, { align: 'center' });
+    y += 6;
+    doc.setDrawColor(140, 122, 92);
+    doc.setLineWidth(0.3);
+    doc.line(95, y, 115, y);
+    y += 10;
+    doc.setTextColor(44, 42, 39);
+
+    // Blocos na ordem narrativa (a mesma da página)
+    const blocos = ordenarBlocosNarrativa(draft.blocos, ORDEM_NARRATIVA);
+    for (const bloco of blocos) {
+      escreverTitulo(bloco.titulo);
+      escreverParagrafo(bloco.texto, 12, 'normal');
+    }
+
+    // Fechamento
+    if (draft.mensagem?.trim()) {
+      garantirEspaco(20);
+      y += 10;
+      escreverParagrafo(draft.mensagem.trim(), 12, 'italic');
+    }
+
+    // A resposta dele (Recordação — só quando o pai escreveu de volta)
+    if (temResposta) {
+      garantirEspaco(34);
+      y += 12;
+      doc.setDrawColor(210, 195, 170);
+      doc.line(85, y, 125, y);
+      y += 10;
+      escreverTitulo('E a resposta dele');
+      escreverParagrafo(`“${draft.reacao_texto!.trim()}”`, 13, 'italic');
+    }
+
+    // Rodapé da última página
+    garantirEspaco(20);
+    y += 12;
+    doc.setTextColor(140, 122, 92);
+    doc.setFontSize(8);
+    doc.setFont('Times', 'normal');
+    doc.text('A página expira. A carta, não.', 105, y, { align: 'center' });
+
+    doc.save(
+      temResposta
+        ? `recordacao-${draft.nome_destinatario.toLowerCase().replace(/\s+/g, '-')}.pdf`
+        : `carta-${draft.nome_destinatario.toLowerCase().replace(/\s+/g, '-')}.pdf`
+    );
+  };
+
   // ---- Simulação (apenas dev, sem credenciais) ----
   const triggerSimulationUnlock = async () => {
     if (!paymentDetails || !draft) return;
@@ -369,10 +484,10 @@ export default function PreviewPagina() {
             </div>
 
             <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight mb-2">
-              O presente está pronto!
+              Pronto. Agora a parte boa é sua.
             </h1>
             <p className="text-sm text-gray-500 leading-relaxed mb-4">
-              Pagamento confirmado. Enviamos o link e o QR Code também para{' '}
+              Imprime o cartão, entrega sem explicar nada e observa. Enviamos tudo também para{' '}
               <strong>{email || draft.email_comprador || 'seu e-mail'}</strong> — guarde esse
               e-mail, ele é seu acesso à página.
             </p>
@@ -446,6 +561,20 @@ export default function PreviewPagina() {
                   <span>Baixar Cartão (PDF)</span>
                 </button>
               </div>
+
+              {/* A Carta / A Recordação (Fase 4) */}
+              <button
+                onClick={downloadCartaPDF}
+                className="w-full py-3.5 px-4 rounded-xl border border-amber-200 bg-amber-50 hover:bg-amber-100 font-bold text-xs sm:text-sm text-amber-900 transition-all flex items-center justify-center gap-2 shadow-sm"
+              >
+                <FileText className="w-4 h-4 text-amber-700" />
+                <span>{temResposta ? 'Baixar a Recordação (PDF)' : 'Baixar a Carta (PDF)'}</span>
+              </button>
+              <p className="text-[10px] text-gray-400 -mt-1">
+                {temResposta
+                  ? 'O que você escreveu e o que ele respondeu, na mesma folha.'
+                  : 'Suas palavras diagramadas como carta, para imprimir e guardar. A página expira; a carta, não.'}
+              </p>
 
               <a
                 href={`/p/${generatedSlug}`}
