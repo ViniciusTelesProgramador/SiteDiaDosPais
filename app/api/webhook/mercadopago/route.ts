@@ -1,268 +1,264 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import crypto from 'crypto';
+import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabaseAdmin';
 import { generateShortSlug } from '@/lib/utils';
-import { Resend } from 'resend';
-import QRCode from 'qrcode';
+import { sendConfirmationEmail } from '@/lib/email';
 
-// Helper to check if credentials exist
+export const dynamic = 'force-dynamic';
+
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+
 const isMercadoPagoConfigured = () => {
   const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
   return token && token.trim() !== '' && !token.includes('your-mercadopago');
 };
 
-const isSupabaseConfigured = () => {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  return url && !url.includes('placeholder') && key && !key.includes('placeholder');
-};
-
-const resend = process.env.RESEND_API_KEY && process.env.RESEND_API_KEY.trim() !== '' && !process.env.RESEND_API_KEY.includes('re_your')
-  ? new Resend(process.env.RESEND_API_KEY)
-  : null;
-
-// Isomorphic helper to send confirmation emails
-async function sendConfirmationEmail(
-  emailComprador: string,
-  nomeDestinatario: string,
-  generatedSlug: string
-) {
-  const origin = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-  const publicUrl = `${origin}/p/${generatedSlug}`;
-
-  let qrBuffer: Buffer;
-  try {
-    qrBuffer = await QRCode.toBuffer(publicUrl, { width: 300, margin: 1 });
-  } catch (err) {
-    console.error('Failed to generate QR Code buffer for email:', err);
-    return;
-  }
-
-  if (resend) {
-    try {
-      await resend.emails.send({
-        from: process.env.MAIL_FROM || 'Recado Surpresa <onboarding@resend.dev>',
-        to: emailComprador,
-        subject: `Seu Recado Surpresa para ${nomeDestinatario} está pronto!`,
-        html: `
-          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 12px; background-color: #fcfcfc;">
-            <div style="text-align: center; margin-bottom: 24px;">
-              <span style="font-size: 40px;">❤️</span>
-              <h2 style="color: #4f46e5; margin-top: 10px;">Homenagem Ativada com Sucesso!</h2>
-            </div>
-            <p>Olá!</p>
-            <p>O pagamento do seu Recado Surpresa foi confirmado. A página personalizada para o(a) <strong>${nomeDestinatario}</strong> já está no ar!</p>
-            <p style="margin: 30px 0; text-align: center;">
-              <a href="${publicUrl}" style="background-color: #4f46e5; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block; box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2);">Visualizar Homenagem</a>
-            </p>
-            <p style="font-size: 14px; color: #555;">Link direto: <a href="${publicUrl}" style="color: #4f46e5;">${publicUrl}</a></p>
-            <p style="font-size: 14px; color: #555; line-height: 1.5;">Também anexamos a este e-mail a imagem do seu <strong>QR Code</strong> exclusivo. Você pode salvá-la no seu celular ou imprimi-la em um cartão físico para presentear seu pai!</p>
-            <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;" />
-            <p style="font-size: 11px; color: #888; text-align: center;">Este é um e-mail transacional enviado automaticamente por Recado Surpresa.</p>
-          </div>
-        `,
-        attachments: [
-          {
-            filename: 'qrcode-recado-surpresa.png',
-            content: qrBuffer,
-          },
-        ],
-      });
-      console.log(`[Resend] Confirmation email successfully sent to ${emailComprador}.`);
-    } catch (emailErr) {
-      console.error('[Resend] Failed to send email via Resend API:', emailErr);
+/**
+ * Valida a assinatura `x-signature` do Mercado Pago (RNF10).
+ * Manifesto oficial: `id:[data.id];request-id:[x-request-id];ts:[ts];`
+ * — partes ausentes são omitidas; data.id alfanumérico vai em minúsculas.
+ */
+function validarAssinaturaMP(req: NextRequest, dataId: string | null): boolean {
+  const secret = process.env.MERCADO_PAGO_WEBHOOK_SECRET;
+  if (!secret || secret.trim() === '' || secret.includes('your-')) {
+    // Fail closed em produção: sem secret configurado, nenhum webhook é aceito.
+    if (IS_PRODUCTION) {
+      console.error('[Webhook] MERCADO_PAGO_WEBHOOK_SECRET não configurado em produção.');
+      return false;
     }
-  } else {
-    console.log('\n==================================================');
-    console.log('SIMULATED EMAIL NOTIFICATION (RESEND KEY MISSING)');
-    console.log(`TO: ${emailComprador}`);
-    console.log(`SUBJECT: Seu Recado Surpresa para ${nomeDestinatario} está pronto!`);
-    console.log(`PUBLIC URL: ${publicUrl}`);
-    console.log('ATTACHMENT: qrcode-recado-surpresa.png (generated buffer)');
-    console.log('==================================================\n');
+    console.warn('[Webhook] Sem MERCADO_PAGO_WEBHOOK_SECRET — validação pulada (apenas dev).');
+    return true;
   }
+
+  const xSignature = req.headers.get('x-signature');
+  const xRequestId = req.headers.get('x-request-id');
+  if (!xSignature) return false;
+
+  let ts: string | undefined;
+  let v1: string | undefined;
+  for (const part of xSignature.split(',')) {
+    const [key, value] = part.split('=').map((s) => s?.trim());
+    if (key === 'ts') ts = value;
+    if (key === 'v1') v1 = value;
+  }
+  if (!ts || !v1) return false;
+
+  let manifest = '';
+  if (dataId) {
+    const normalizado = /^[a-zA-Z0-9]+$/.test(dataId) ? dataId.toLowerCase() : dataId;
+    manifest += `id:${normalizado};`;
+  }
+  if (xRequestId) manifest += `request-id:${xRequestId};`;
+  manifest += `ts:${ts};`;
+
+  const esperado = crypto.createHmac('sha256', secret).update(manifest).digest('hex');
+  try {
+    return crypto.timingSafeEqual(Buffer.from(esperado, 'hex'), Buffer.from(v1, 'hex'));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Marca a página como paga, gera o slug (uma única vez) e envia o e-mail.
+ * Retorna o slug quando ESTA chamada realizou a transição; null caso já
+ * estivesse processada (idempotência — RNF10).
+ */
+async function processarPagamentoAprovado(paymentId: string): Promise<string | null> {
+  // Transição atômica pendente -> pago: só uma chamada concorrente "vence".
+  const { data: transicao, error: transError } = await supabaseAdmin
+    .from('pagamentos')
+    .update({ status: 'pago' })
+    .eq('id', paymentId)
+    .neq('status', 'pago')
+    .select('pagina_id')
+    .maybeSingle();
+
+  if (transError) {
+    console.error(`[Webhook] Erro ao atualizar pagamento ${paymentId}:`, transError);
+    throw new Error('Erro ao atualizar pagamento.');
+  }
+  if (!transicao) {
+    // Já processado antes (notificação duplicada) — nada a fazer.
+    console.log(`[Webhook] Pagamento ${paymentId} já processado. Ignorando duplicata.`);
+    return null;
+  }
+
+  const pageId = transicao.pagina_id;
+  const agora = new Date();
+  const expiraEm = new Date(agora);
+  expiraEm.setMonth(expiraEm.getMonth() + 12);
+
+  // Gera slug apenas se a página ainda não tem um (nunca gerar outro).
+  const { data: pagina, error: pageError } = await supabaseAdmin
+    .from('paginas')
+    .select('slug, email_comprador, nome_destinatario, revelar_em, pago')
+    .eq('id', pageId)
+    .single();
+
+  if (pageError || !pagina) {
+    console.error(`[Webhook] Página ${pageId} não encontrada:`, pageError);
+    throw new Error('Página associada ao pagamento não encontrada.');
+  }
+
+  const slug = pagina.slug || generateShortSlug(10);
+
+  const { error: updateError } = await supabaseAdmin
+    .from('paginas')
+    .update({
+      pago: true,
+      slug,
+      pago_em: agora.toISOString(),
+      expira_em: expiraEm.toISOString(),
+    })
+    .eq('id', pageId);
+
+  if (updateError) {
+    console.error(`[Webhook] Erro ao atualizar página ${pageId}:`, updateError);
+    throw new Error('Erro ao atualizar página.');
+  }
+
+  if (pagina.email_comprador) {
+    await sendConfirmationEmail(
+      pagina.email_comprador,
+      pagina.nome_destinatario || 'seu pai',
+      slug,
+      { revelarEm: pagina.revelar_em }
+    );
+  } else {
+    console.warn(`[Webhook] Página ${pageId} sem email_comprador — e-mail não enviado.`);
+  }
+
+  console.log(`[Webhook] Página ${pageId} liberada com slug ${slug}.`);
+  return slug;
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const sbConfigured = isSupabaseConfigured();
-
-    // Parse query parameters
     const url = new URL(req.url);
+
+    // ------------------------------------------------------------------
+    // Gatilho de simulação — SOMENTE em desenvolvimento (RNF10).
+    // Em produção este caminho não existe: 404 sem tocar em nada.
+    // ------------------------------------------------------------------
     const mockPaymentId = url.searchParams.get('mock_payment_id');
-    const mockPageId = url.searchParams.get('page_id');
-    const mockEmail = url.searchParams.get('email');
-
-    // 1. Direct simulation trigger (for testing without webhook deliveries)
-    if (mockPaymentId && mockPageId && mockPaymentId.startsWith('mock_pay_')) {
-      console.log(`[Webhook Simulation] Unlocking page: ${mockPageId} with mock payment: ${mockPaymentId}`);
-
-      const generatedSlug = generateShortSlug(8);
-
-      if (sbConfigured) {
-        // Create/Update the mock payment record
-        await supabase
-          .from('pagamentos')
-          .upsert({
-            id: mockPaymentId,
-            pagina_id: mockPageId,
-            valor: 9.90,
-            status: 'pago',
-            metodo: 'pix'
-          });
-
-        // Set page status to paid and generate a slug
-        const { data, error } = await supabase
-          .from('paginas')
-          .update({
-            pago: true,
-            slug: generatedSlug
-          })
-          .eq('id', mockPageId)
-          .select()
-          .single();
-
-        if (error || !data) {
-          console.error('[Webhook Simulation] Error updating page in database:', error);
-          return NextResponse.json({ error: error?.message || 'Erro ao carregar dados' }, { status: 500 });
-        }
-
-        // Trigger transactional email
-        const targetEmail = mockEmail || data.email_comprador || 'comprador@mock.com';
-        await sendConfirmationEmail(targetEmail, data.nome_destinatario, generatedSlug);
-
-        console.log(`[Webhook Simulation] Page unlocked successfully. Slug: ${generatedSlug}`);
-        return NextResponse.json({ success: true, slug: generatedSlug, page: data });
+    if (mockPaymentId) {
+      if (IS_PRODUCTION) {
+        return NextResponse.json({ error: 'Não encontrado.' }, { status: 404 });
       }
 
-      // If Supabase is not configured, we return mock success for client preview local state
-      const targetEmail = mockEmail || 'comprador@mock.com';
-      await sendConfirmationEmail(targetEmail, 'Carlos (Simulado)', generatedSlug);
+      const mockPageId = url.searchParams.get('page_id');
+      const mockEmail = url.searchParams.get('email');
+      if (!mockPageId || !mockPaymentId.startsWith('mock_pay_')) {
+        return NextResponse.json({ error: 'Parâmetros de simulação inválidos.' }, { status: 400 });
+      }
 
-      return NextResponse.json({
-        success: true,
-        slug: generatedSlug,
-        isMock: true
-      });
+      console.log(`[Webhook Simulação] Liberando página ${mockPageId} (dev).`);
+
+      if (isSupabaseConfigured()) {
+        await supabaseAdmin.from('pagamentos').upsert({
+          id: mockPaymentId,
+          pagina_id: mockPageId,
+          valor: 0,
+          status: 'pendente',
+          metodo: 'pix',
+        });
+        if (mockEmail) {
+          await supabaseAdmin
+            .from('paginas')
+            .update({ email_comprador: mockEmail })
+            .eq('id', mockPageId);
+        }
+        const slug = await processarPagamentoAprovado(mockPaymentId);
+        return NextResponse.json({ success: true, slug });
+      }
+
+      // Sem Supabase: modo 100% local (IndexedDB no client)
+      const slug = generateShortSlug(10);
+      await sendConfirmationEmail(mockEmail || 'comprador@mock.com', 'Simulação', slug);
+      return NextResponse.json({ success: true, slug, isMock: true });
     }
 
-    // 2. Real Mercado Pago Webhook Handling
-    let body: { data?: { id?: string }, id?: string, type?: string } = {};
+    // ------------------------------------------------------------------
+    // Webhook real do Mercado Pago
+    // ------------------------------------------------------------------
+    let body: { data?: { id?: string }; id?: string | number; type?: string } = {};
     try {
       body = await req.json();
     } catch {
-      // Body may be empty
+      // corpo pode estar vazio
     }
 
-    // Extract payment ID from request query or body
-    const paymentId = url.searchParams.get('id') || url.searchParams.get('data.id') || body.data?.id || body.id;
-    const type = url.searchParams.get('type') || body.type;
+    const dataIdParam = url.searchParams.get('data.id') || url.searchParams.get('id');
+    const paymentId = dataIdParam || body.data?.id || (body.id != null ? String(body.id) : null);
+    const type = url.searchParams.get('type') || url.searchParams.get('topic') || body.type;
 
-    console.log(`[Webhook] Received notification: type=${type}, id=${paymentId}`);
+    // Assinatura primeiro: requisição não autenticada não toca no banco (RNF10)
+    if (!validarAssinaturaMP(req, dataIdParam)) {
+      console.warn('[Webhook] Assinatura inválida ou ausente. Rejeitando.');
+      return NextResponse.json({ error: 'Assinatura inválida.' }, { status: 401 });
+    }
 
-    // If type is not payment, we just acknowledge receipt
-    if (type !== 'payment' && !url.searchParams.has('id')) {
+    console.log(`[Webhook] Notificação recebida: type=${type}, id=${paymentId}`);
+
+    if (type !== 'payment') {
       return NextResponse.json({ received: true });
     }
-
     if (!paymentId) {
       return NextResponse.json({ error: 'ID de pagamento não informado.' }, { status: 400 });
     }
-
     if (!isMercadoPagoConfigured()) {
-      return NextResponse.json({ error: 'Mercado Pago não configurado no servidor.' }, { status: 500 });
+      return NextResponse.json({ error: 'Mercado Pago não configurado.' }, { status: 500 });
+    }
+    if (!isSupabaseConfigured()) {
+      return NextResponse.json({ error: 'Banco de dados não configurado.' }, { status: 500 });
     }
 
-    // Query Mercado Pago for payment status
+    // Consulta o status real do pagamento na API do MP (nunca confia no body)
     const mpResponse = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-      headers: {
-        'Authorization': `Bearer ${process.env.MERCADO_PAGO_ACCESS_TOKEN}`,
-      },
+      headers: { Authorization: `Bearer ${process.env.MERCADO_PAGO_ACCESS_TOKEN}` },
     });
 
     if (!mpResponse.ok) {
-      console.error(`[Webhook] Error querying Mercado Pago for payment ${paymentId}`);
-      return NextResponse.json({ error: 'Erro ao consultar pagamento no Mercado Pago.' }, { status: 500 });
+      console.error(`[Webhook] Erro ao consultar pagamento ${paymentId} no MP (${mpResponse.status}).`);
+      // 500 faz o MP reenviar a notificação depois
+      return NextResponse.json({ error: 'Erro ao consultar pagamento.' }, { status: 500 });
     }
 
     const mpPayment = await mpResponse.json();
-    if (!mpPayment) {
-      return NextResponse.json({ error: 'Dados do pagamento vazios.' }, { status: 500 });
-    }
+    console.log(`[Webhook] Pagamento ${paymentId}: status=${mpPayment?.status}`);
 
-    const paymentStatus = mpPayment.status;
-    console.log(`[Webhook] Payment ${paymentId} status: ${paymentStatus}`);
-
-    if (paymentStatus === 'approved' && sbConfigured) {
-      // Find the associated page and grab email/name
-      const { data: paymentRecord, error: payError } = await supabase
+    if (mpPayment?.status === 'approved') {
+      // Conciliação: se o registro não existe (insert do checkout falhou),
+      // recria a partir do external_reference antes de processar.
+      const { data: existente } = await supabaseAdmin
         .from('pagamentos')
-        .select(`
-          pagina_id, 
-          status,
-          paginas (
-            email_comprador,
-            nome_destinatario
-          )
-        `)
-        .eq('id', paymentId)
-        .single();
+        .select('id')
+        .eq('id', String(paymentId))
+        .maybeSingle();
 
-      if (payError || !paymentRecord) {
-        console.error(`[Webhook] Payment record not found in database for ID ${paymentId}:`, payError);
-        return NextResponse.json({ error: 'Registro de pagamento não encontrado.' }, { status: 404 });
+      if (!existente && mpPayment.external_reference) {
+        await supabaseAdmin.from('pagamentos').insert({
+          id: String(paymentId),
+          pagina_id: mpPayment.external_reference,
+          valor: mpPayment.transaction_amount ?? 0,
+          status: 'pendente',
+          metodo: 'pix',
+        });
       }
 
-      // Only update if not already processed/paid
-      const typedRecord = paymentRecord as unknown as {
-        pagina_id: string;
-        status: string;
-        paginas: {
-          email_comprador: string | null;
-          nome_destinatario: string;
-        } | null;
-      };
-      if (typedRecord.status !== 'pago') {
-        const pageId = typedRecord.pagina_id;
-        const generatedSlug = generateShortSlug(8);
-
-        // Update payment record to paid
-        await supabase
-          .from('pagamentos')
-          .update({ status: 'pago' })
-          .eq('id', paymentId);
-
-        // Update page record to paid and generate a slug
-        const { data: pageData, error: pageError } = await supabase
-          .from('paginas')
-          .update({
-            pago: true,
-            slug: generatedSlug
-          })
-          .eq('id', pageId)
-          .select()
-          .single();
-
-        if (pageError || !pageData) {
-          console.error(`[Webhook] Error updating page status:`, pageError);
-          return NextResponse.json({ error: 'Erro ao atualizar página.' }, { status: 500 });
-        }
-
-        const emailComprador = pageData.email_comprador;
-        const nomeDestinatario = pageData.nome_destinatario || 'seu pai';
-
-        if (emailComprador) {
-          await sendConfirmationEmail(emailComprador, nomeDestinatario, generatedSlug);
-        }
-
-        console.log(`[Webhook] Page ${pageId} unlocked successfully with slug: ${generatedSlug}`);
-      }
+      await processarPagamentoAprovado(String(paymentId));
+    } else if (mpPayment?.status === 'rejected' || mpPayment?.status === 'cancelled') {
+      await supabaseAdmin
+        .from('pagamentos')
+        .update({ status: 'falhou' })
+        .eq('id', String(paymentId))
+        .neq('status', 'pago');
     }
 
-    // Return 200 OK to Mercado Pago to acknowledge receipt
     return NextResponse.json({ received: true });
-
   } catch (error: unknown) {
-    console.error('[Webhook] Error handling webhook:', error);
+    console.error('[Webhook] Erro no processamento:', error);
     const msg = error instanceof Error ? error.message : 'Erro interno no servidor.';
     return NextResponse.json({ error: msg }, { status: 500 });
   }

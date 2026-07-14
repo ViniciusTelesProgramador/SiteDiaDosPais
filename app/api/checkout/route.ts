@@ -1,86 +1,115 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabaseAdmin';
+import { PRECO_UNICO, APP_NAME } from '@/lib/config';
+import { isEmailValido } from '@/lib/utils';
 
-// Helper to check if credentials exist
+export const dynamic = 'force-dynamic';
+
 const isMercadoPagoConfigured = () => {
   const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
   return token && token.trim() !== '' && !token.includes('your-mercadopago');
 };
 
-const isSupabaseConfigured = () => {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  return url && !url.includes('placeholder') && key && !key.includes('placeholder');
-};
-
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { pageId, email, plano } = body;
+    const { pageId, email } = body;
 
-    if (!pageId || !email || !plano) {
+    if (!pageId) {
       return NextResponse.json(
-        { error: 'Parâmetros inválidos. É necessário informar pageId, email e plano.' },
+        { error: 'Parâmetros inválidos. É necessário informar pageId.' },
         { status: 400 }
       );
     }
 
-    // Determine amount
-    const amount = plano === 'completo' ? 14.90 : 9.90;
-    const description = `Recado Surpresa Dia dos Pais - Plano ${plano === 'completo' ? 'Completo' : 'Básico'}`;
+    // Preço definido EXCLUSIVAMENTE no servidor (RF03/T0.3):
+    // nada vindo do body altera o valor cobrado.
+    const amount = PRECO_UNICO;
+    const description = `${APP_NAME} — Dia dos Pais`;
 
     const mpConfigured = isMercadoPagoConfigured();
     const sbConfigured = isSupabaseConfigured();
 
+    // Resolve o e-mail do comprador: o do rascunho (T1.1), com override do modal
+    let emailComprador: string | null =
+      typeof email === 'string' && isEmailValido(email) ? email.trim() : null;
+
+    if (sbConfigured) {
+      const { data: pagina, error: pageError } = await supabaseAdmin
+        .from('paginas')
+        .select('id, email_comprador, pago')
+        .eq('id', pageId)
+        .single();
+
+      if (pageError || !pagina) {
+        return NextResponse.json({ error: 'Página não encontrada.' }, { status: 404 });
+      }
+      if (pagina.pago) {
+        return NextResponse.json({ error: 'Esta página já foi paga.' }, { status: 400 });
+      }
+
+      if (emailComprador && emailComprador !== pagina.email_comprador) {
+        await supabaseAdmin
+          .from('paginas')
+          .update({ email_comprador: emailComprador })
+          .eq('id', pageId);
+      } else if (!emailComprador) {
+        emailComprador = pagina.email_comprador;
+      }
+    }
+
+    if (!emailComprador) {
+      return NextResponse.json(
+        { error: 'Informe um e-mail válido para receber o link do presente.' },
+        { status: 400 }
+      );
+    }
+
     if (!mpConfigured) {
-      console.log('Mercado Pago Access Token is not defined. Returning Mock Pix.');
-      
+      console.log('[Checkout] Mercado Pago não configurado. Retornando Pix simulado (dev).');
       const mockPaymentId = `mock_pay_${crypto.randomUUID().substring(0, 8)}`;
-      
-      // Return simulated payment details
       return NextResponse.json({
         success: true,
         paymentId: mockPaymentId,
         amount,
-        qrCode: '00020101021226870014br.gov.bcb.pix0125simulado-chave-pix-mock-recado-surpresa-20265204000053039865802BR5922Recado Surpresa MP Mock6009Sao Paulo62070503***6304E781',
-        qrCodeBase64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', // Mock 1px png base64
+        qrCode:
+          '00020101021226870014br.gov.bcb.pix0125simulado-chave-pix-mock-recado-surpresa-20265204000053039865802BR5922Recado Surpresa MP Mock6009Sao Paulo62070503***6304E781',
+        qrCodeBase64:
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
         isMock: true,
-        status: 'pending'
+        status: 'pending',
       });
     }
 
-    // Mercado Pago API payment request
+    // Cria o pagamento Pix no Mercado Pago
     const idempotencyKey = crypto.randomUUID();
     const response = await fetch('https://api.mercadopago.com/v1/payments', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.MERCADO_PAGO_ACCESS_TOKEN}`,
+        Authorization: `Bearer ${process.env.MERCADO_PAGO_ACCESS_TOKEN}`,
         'X-Idempotency-Key': idempotencyKey,
       },
       body: JSON.stringify({
         transaction_amount: amount,
-        description: description,
+        description,
         payment_method_id: 'pix',
-        // notification_url points to our webhook endpoint
         notification_url: `${process.env.NEXT_PUBLIC_APP_URL || 'https://placeholder.com'}/api/webhook/mercadopago`,
-        payer: {
-          email: email,
-        },
+        external_reference: pageId,
+        payer: { email: emailComprador },
       }),
     });
 
     if (!response.ok) {
       const errorData = await response.json();
-      console.error('Mercado Pago API error:', errorData);
+      console.error('[Checkout] Erro na API do Mercado Pago:', errorData);
       return NextResponse.json(
-        { error: `Mercado Pago Error: ${errorData.message || 'Erro ao processar pagamento.'}` },
+        { error: `Mercado Pago: ${errorData.message || 'erro ao processar pagamento.'}` },
         { status: 500 }
       );
     }
 
     const paymentData = await response.json();
-
     const paymentId = String(paymentData.id);
     const transactionData = paymentData.point_of_interaction?.transaction_data;
 
@@ -91,27 +120,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Record the payment inside Supabase if configured
     if (sbConfigured) {
-      // Update page with the buyer's email
-      await supabase
-        .from('paginas')
-        .update({ email_comprador: email })
-        .eq('id', pageId);
-
-      const { error: dbError } = await supabase
-        .from('pagamentos')
-        .insert({
-          id: paymentId,
-          pagina_id: pageId,
-          valor: amount,
-          status: 'pendente',
-          metodo: 'pix'
-        });
-
+      const { error: dbError } = await supabaseAdmin.from('pagamentos').insert({
+        id: paymentId,
+        pagina_id: pageId,
+        valor: amount,
+        status: 'pendente',
+        metodo: 'pix',
+      });
       if (dbError) {
-        console.error('Error inserting payment record in database:', dbError);
-        // We continue anyway, because the payment was successfully generated at Mercado Pago
+        // O pagamento existe no MP; o webhook ainda consegue conciliar pelo id.
+        console.error('[Checkout] Erro ao registrar pagamento no banco:', dbError);
       }
     }
 
@@ -122,15 +141,11 @@ export async function POST(req: NextRequest) {
       qrCode: transactionData.qr_code,
       qrCodeBase64: transactionData.qr_code_base64,
       isMock: false,
-      status: paymentData.status
+      status: paymentData.status,
     });
-
   } catch (error: unknown) {
-    console.error('Error in checkout handler:', error);
+    console.error('[Checkout] Erro interno:', error);
     const msg = error instanceof Error ? error.message : 'Ocorreu um erro interno no servidor.';
-    return NextResponse.json(
-      { error: msg },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

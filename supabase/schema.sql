@@ -1,73 +1,191 @@
--- Drop tables if they exist (for easy resetting/re-run)
-DROP TABLE IF EXISTS pagamentos;
-DROP TABLE IF EXISTS paginas;
+-- ============================================================================
+-- Recado Surpresa — Schema do banco (fonte de verdade versionada)
+-- Executar no SQL Editor do Supabase. Seguro executar mais de uma vez.
+--
+-- Modelo de segurança (RNF11):
+--   * RLS habilitado nas duas tabelas SEM policies para anon/authenticated.
+--   * Todo acesso do app passa pelas rotas de servidor com a SERVICE ROLE KEY
+--     (que ignora RLS). A anon key não lê nem escreve NADA nas tabelas.
+--   * O bucket de fotos é público para LEITURA (URLs não adivinháveis),
+--     mas o upload só acontece via service role (nenhuma policy de INSERT).
+-- ============================================================================
 
--- Create paginas table
-CREATE TABLE paginas (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    slug TEXT UNIQUE, -- Nullable initially, populated on payment
-    nome_destinatario TEXT NOT NULL,
-    mensagem TEXT NOT NULL,
-    midias TEXT[] NOT NULL DEFAULT '{}', -- Array of image URLs
-    tema TEXT NOT NULL CHECK (tema IN ('classico', 'divertido', 'minimalista')),
-    pago BOOLEAN NOT NULL DEFAULT FALSE,
-    plano TEXT NOT NULL CHECK (plano IN ('basico', 'completo')),
-    email_comprador TEXT,
-    criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+create extension if not exists pgcrypto;
+
+-- ----------------------------------------------------------------------------
+-- Tabela: paginas
+-- ----------------------------------------------------------------------------
+create table if not exists public.paginas (
+  id uuid primary key default gen_random_uuid(),
+  -- slug só existe após o pagamento (RF04); índice único parcial abaixo
+  slug text,
+  email_comprador text,
+  nome_destinatario text not null,
+  -- mensagem principal/fechamento (opcional se houver blocos)
+  mensagem text,
+  -- respostas das perguntas guiadas: [{"pergunta_id","titulo","texto"}]
+  blocos jsonb,
+  -- fotos: [{"url","legenda"}] (legenda opcional)
+  midias jsonb not null default '[]'::jsonb,
+  tema text not null default 'classico',
+  -- mantido para v2; sem uso no fluxo do MVP (preço único)
+  plano text not null default 'basico' check (plano in ('basico', 'completo')),
+  pago boolean not null default false,
+  pago_em timestamptz,
+  -- se futuro, a página pública mostra contagem regressiva (RF06/T2.1)
+  revelar_em timestamptz,
+  -- pago_em + 12 meses (pagas) / usado pelo cron de limpeza (rascunhos)
+  expira_em timestamptz,
+  visualizacoes integer not null default 0,
+  primeira_visualizacao_em timestamptz,
+  -- reação do destinatário (RF16)
+  reacao_emoji text,
+  reacao_em timestamptz,
+  -- lembrete pré-revelação (T2.8)
+  lembrete_enviado_em timestamptz,
+  criado_em timestamptz not null default now()
 );
 
--- Index on slug for fast lookups
-CREATE INDEX idx_paginas_slug ON paginas(slug) WHERE slug IS NOT NULL;
-
--- Create pagamentos table
-CREATE TABLE pagamentos (
-    id TEXT PRIMARY KEY, -- Can be Mercado Pago payment ID
-    pagina_id UUID NOT NULL REFERENCES paginas(id) ON DELETE CASCADE,
-    valor NUMERIC(10, 2) NOT NULL,
-    status TEXT NOT NULL CHECK (status IN ('pendente', 'pago', 'falhou')),
-    metodo TEXT NOT NULL CHECK (metodo IN ('pix', 'cartao')),
-    criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+-- ----------------------------------------------------------------------------
+-- Tabela: pagamentos (PK = id do pagamento no Mercado Pago)
+-- ----------------------------------------------------------------------------
+create table if not exists public.pagamentos (
+  id text primary key,
+  pagina_id uuid not null references public.paginas (id) on delete cascade,
+  valor numeric(10, 2) not null,
+  status text not null default 'pendente' check (status in ('pendente', 'pago', 'falhou')),
+  metodo text not null default 'pix' check (metodo in ('pix', 'cartao')),
+  criado_em timestamptz not null default now()
 );
 
--- Index on payments for lookups
-CREATE INDEX idx_pagamentos_pagina_id ON pagamentos(pagina_id);
+-- ============================================================================
+-- MIGRAÇÃO de bancos criados com o schema antigo (idempotente).
+-- ============================================================================
+alter table public.paginas add column if not exists email_comprador text;
+alter table public.paginas add column if not exists blocos jsonb;
+alter table public.paginas add column if not exists pago_em timestamptz;
+alter table public.paginas add column if not exists revelar_em timestamptz;
+alter table public.paginas add column if not exists expira_em timestamptz;
+alter table public.paginas add column if not exists visualizacoes integer not null default 0;
+alter table public.paginas add column if not exists primeira_visualizacao_em timestamptz;
+alter table public.paginas add column if not exists reacao_emoji text;
+alter table public.paginas add column if not exists reacao_em timestamptz;
+alter table public.paginas add column if not exists lembrete_enviado_em timestamptz;
+alter table public.pagamentos add column if not exists criado_em timestamptz not null default now();
 
--- Enable Row Level Security (RLS)
-ALTER TABLE paginas ENABLE ROW LEVEL SECURITY;
-ALTER TABLE pagamentos ENABLE ROW LEVEL SECURITY;
+-- mensagem passa a ser opcional (blocos podem substituí-la)
+alter table public.paginas alter column mensagem drop not null;
+alter table public.paginas alter column slug drop not null;
 
--- RLS Policies for paginas
--- 1. Anyone can insert a new draft page
-CREATE POLICY "Allow public insert on paginas" ON paginas
-    FOR INSERT TO public
-    WITH CHECK (true);
+-- tema legado 'divertido'/'minimalista' -> 'descontraido' (T0.3)
+alter table public.paginas drop constraint if exists paginas_tema_check;
+update public.paginas set tema = 'descontraido' where tema in ('divertido', 'minimalista');
+alter table public.paginas
+  add constraint paginas_tema_check check (tema in ('classico', 'descontraido'));
 
--- 2. Anyone can select a page if it is paid, OR if they know the UUID (allows previewing drafts)
-CREATE POLICY "Allow public select on paginas" ON paginas
-    FOR SELECT TO public
-    USING (pago = TRUE OR id IS NOT NULL);
+-- midias legado (text[]) -> jsonb [{"url","legenda"}]
+do $$
+declare
+  tipo text;
+begin
+  select data_type into tipo
+  from information_schema.columns
+  where table_schema = 'public' and table_name = 'paginas' and column_name = 'midias';
 
--- RLS Policies for pagamentos
--- 1. Payments are handled via secure server-side API routes using Service Role Key.
--- However, we can add a basic policy to allow the user to view their payment status by ID if needed, 
--- or keep it fully server-side. Let's allow public SELECT by ID for easy status checking:
-CREATE POLICY "Allow public select on pagamentos" ON pagamentos
-    FOR SELECT TO public
-    USING (true);
+  if tipo = 'ARRAY' then
+    alter table public.paginas alter column midias drop default;
+    alter table public.paginas
+      alter column midias type jsonb
+      using coalesce(
+        (select jsonb_agg(jsonb_build_object('url', u)) from unnest(midias) as u),
+        '[]'::jsonb
+      );
+    alter table public.paginas alter column midias set default '[]'::jsonb;
+  elsif tipo = 'jsonb' then
+    -- converte itens string remanescentes para o formato de objetos
+    update public.paginas
+    set midias = (
+      select coalesce(jsonb_agg(
+        case when jsonb_typeof(item) = 'string'
+          then jsonb_build_object('url', item #>> '{}')
+          else item
+        end
+      ), '[]'::jsonb)
+      from jsonb_array_elements(midias) as item
+    )
+    where jsonb_typeof(midias) = 'array'
+      and exists (
+        select 1 from jsonb_array_elements(midias) as i where jsonb_typeof(i) = 'string'
+      );
+  end if;
+end $$;
 
--- Create Supabase Storage Bucket for photos (if it does not exist)
--- Note: This requires inserting into the storage.buckets table.
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('fotos', 'fotos', TRUE)
-ON CONFLICT (id) DO NOTHING;
+-- expira_em para páginas pagas antigas
+update public.paginas
+set expira_em = coalesce(pago_em, criado_em) + interval '12 months'
+where pago = true and expira_em is null;
 
--- RLS Policies for storage objects (fotos bucket)
--- 1. Allow public read access to all files in the 'fotos' bucket
-CREATE POLICY "Allow public read access to fotos" ON storage.objects
-    FOR SELECT TO public
-    USING (bucket_id = 'fotos');
+-- ----------------------------------------------------------------------------
+-- Índices
+-- ----------------------------------------------------------------------------
+drop index if exists idx_paginas_slug;
+create unique index if not exists paginas_slug_unico
+  on public.paginas (slug)
+  where slug is not null;
 
--- 2. Allow public upload access to the 'fotos' bucket
-CREATE POLICY "Allow public upload access to fotos" ON storage.objects
-    FOR INSERT TO public
-    WITH CHECK (bucket_id = 'fotos');
+create index if not exists paginas_email_comprador_idx
+  on public.paginas (email_comprador)
+  where pago = true;
+
+create index if not exists pagamentos_pagina_idx on public.pagamentos (pagina_id);
+
+-- ----------------------------------------------------------------------------
+-- RLS: habilitado, sem policies => anon/authenticated não acessam nada.
+-- Remove as policies permissivas do schema antigo (CRÍTICO — RNF11).
+-- ----------------------------------------------------------------------------
+alter table public.paginas enable row level security;
+alter table public.pagamentos enable row level security;
+
+drop policy if exists "Allow public insert on paginas" on public.paginas;
+drop policy if exists "Allow public select on paginas" on public.paginas;
+drop policy if exists "Allow public select on pagamentos" on public.pagamentos;
+
+-- Storage: leitura pública mantida; upload público REMOVIDO (só service role)
+drop policy if exists "Allow public upload access to fotos" on storage.objects;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'storage' and tablename = 'objects'
+      and policyname = 'Allow public read access to fotos'
+  ) then
+    create policy "Allow public read access to fotos" on storage.objects
+      for select to public
+      using (bucket_id = 'fotos');
+  end if;
+end $$;
+
+-- ----------------------------------------------------------------------------
+-- Contador de visualizações atômico (T2.3) — chamado apenas pelo servidor.
+-- ----------------------------------------------------------------------------
+create or replace function public.incrementar_visualizacao(p_slug text)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  update public.paginas
+  set visualizacoes = visualizacoes + 1,
+      primeira_visualizacao_em = coalesce(primeira_visualizacao_em, now())
+  where slug = p_slug and pago = true;
+$$;
+
+revoke execute on function public.incrementar_visualizacao(text) from anon, authenticated, public;
+
+-- ----------------------------------------------------------------------------
+-- Bucket de fotos (leitura pública, upload só via service role)
+-- ----------------------------------------------------------------------------
+insert into storage.buckets (id, name, public)
+values ('fotos', 'fotos', true)
+on conflict (id) do nothing;

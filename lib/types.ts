@@ -1,0 +1,54 @@
+/** Tipos compartilhados entre client, rotas de servidor e componentes. */
+
+export interface Midia {
+  url: string;
+  legenda?: string;
+}
+
+export interface Bloco {
+  pergunta_id: string;
+  titulo: string;
+  texto: string;
+}
+
+export interface Pagina {
+  id: string;
+  slug: string | null;
+  email_comprador: string | null;
+  nome_destinatario: string;
+  mensagem: string | null;
+  blocos: Bloco[] | null;
+  /** Pode ser o formato novo ([{url, legenda}]) ou legado (string[]). */
+  midias: Array<Midia | string>;
+  tema: string;
+  plano: string;
+  pago: boolean;
+  pago_em: string | null;
+  revelar_em: string | null;
+  expira_em: string | null;
+  visualizacoes: number;
+  primeira_visualizacao_em: string | null;
+  reacao_emoji: string | null;
+  reacao_em: string | null;
+  lembrete_enviado_em: string | null;
+  criado_em: string;
+}
+
+/** Normaliza `midias` para o formato novo, aceitando o legado (array de URLs). */
+export function normalizarMidias(
+  midias: Array<Midia | string> | null | undefined
+): Midia[] {
+  if (!midias) return [];
+  return midias.map((m) => (typeof m === 'string' ? { url: m } : m));
+}
+
+/** Normaliza o tema legado `divertido` para o nome canônico `descontraido`. */
+export function normalizarTema(tema: string | null | undefined): 'classico' | 'descontraido' {
+  return tema === 'divertido' || tema === 'descontraido' ? 'descontraido' : 'classico';
+}
+
+/** true se a página tem revelação agendada ainda no futuro. */
+export function aindaNaoRevelada(revelarEm: string | null | undefined): boolean {
+  if (!revelarEm) return false;
+  return new Date(revelarEm).getTime() > Date.now();
+}
