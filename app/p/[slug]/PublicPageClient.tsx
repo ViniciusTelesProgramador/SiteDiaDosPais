@@ -1,44 +1,83 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import Image from 'next/image';
-import { Loader2, Heart, Music, Sparkles } from 'lucide-react';
+import { Loader2, Heart, Share2, Check } from 'lucide-react';
 import { getDraftBySlugFromIndexedDB } from '@/lib/localDatabase';
+import { normalizarMidias, normalizarTema, aindaNaoRevelada, type Bloco, type Midia } from '@/lib/types';
+import { EMOJIS_REACAO } from '@/lib/config';
+import { track } from '@/lib/analytics';
+import PageRenderer from '@/components/PageRenderer';
+import CountdownReveal from '@/components/CountdownReveal';
 
-interface PageData {
-  id: string;
+/**
+ * Página pública do destinatário: cerimônia de abertura (T2.1, visão §5,
+ * camada intermediária), conteúdo, reação de volta (T2.7) e compartilhar.
+ *
+ * O gate da revelação agendada é feito NO SERVIDOR (page.tsx) — este
+ * componente só recebe o conteúdo quando ele já pode ser mostrado.
+ * A exceção é o modo de simulação local (dev, IndexedDB), onde o gate
+ * roda no client mesmo.
+ */
+
+export interface DadosPublicos {
+  slug: string;
   nome_destinatario: string;
-  mensagem: string;
-  midias: string[];
+  mensagem?: string | null;
+  blocos?: Bloco[] | null;
+  midias: Array<Midia | string>;
   tema: string;
-  pago: boolean;
-  plano: string;
-  slug?: string;
+  revelar_em?: string | null;
   isMock?: boolean;
 }
 
 interface PublicPageClientProps {
   slug: string;
-  initialData: PageData | null;
+  initialData: DadosPublicos | null;
+  naoEncontrada?: boolean;
 }
 
-export default function PublicPageClient({ slug, initialData }: PublicPageClientProps) {
-  const [data, setData] = useState<PageData | null>(initialData);
-  const [loading, setLoading] = useState(!initialData);
+type FaseCerimonia = 'convite' | 'nome' | 'conteudo';
+
+export default function PublicPageClient({
+  slug,
+  initialData,
+  naoEncontrada,
+}: PublicPageClientProps) {
+  const [data, setData] = useState<DadosPublicos | null>(initialData);
+  const [loading, setLoading] = useState(!initialData && !naoEncontrada);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    // If we already have initialData from server, do nothing
-    if (initialData) return;
+  // Cerimônia de abertura (T2.1)
+  const [fase, setFase] = useState<FaseCerimonia>('convite');
+  const [conteudoVisivel, setConteudoVisivel] = useState(false);
 
-    // Check IndexedDB fallback for simulation mode
+  // Reação (T2.7)
+  const [reacaoEnviada, setReacaoEnviada] = useState<string | null>(null);
+  const [reacaoLoading, setReacaoLoading] = useState(false);
+
+  // Compartilhar (T2.4)
+  const [compartilhado, setCompartilhado] = useState(false);
+
+  // Fallback do modo de simulação local (dev)
+  useEffect(() => {
+    if (initialData || naoEncontrada) return;
+
     const fetchLocalData = async () => {
       try {
         const foundDraft = await getDraftBySlugFromIndexedDB(slug);
         if (foundDraft) {
-          setData(foundDraft);
+          setData({
+            slug,
+            nome_destinatario: foundDraft.nome_destinatario,
+            mensagem: foundDraft.mensagem,
+            blocos: foundDraft.blocos,
+            midias: foundDraft.midias,
+            tema: foundDraft.tema,
+            revelar_em: foundDraft.revelar_em,
+            isMock: true,
+          });
         } else {
-          setError('Esta homenagem ainda não foi ativada ou não existe.');
+          setError('Esta página ainda não foi ativada ou não existe.');
         }
       } catch (err) {
         console.error(err);
@@ -49,201 +88,252 @@ export default function PublicPageClient({ slug, initialData }: PublicPageClient
     };
 
     fetchLocalData();
-  }, [slug, initialData]);
+  }, [slug, initialData, naoEncontrada]);
+
+  const abrirPresente = () => {
+    // Cerimônia: toque -> nome sozinho por ~1.8s -> conteúdo com fade
+    setFase('nome');
+    setTimeout(() => {
+      setFase('conteudo');
+      // pequeno atraso para o fade-in do conteúdo
+      setTimeout(() => setConteudoVisivel(true), 60);
+    }, 1800);
+  };
+
+  const enviarReacao = async (emoji: string) => {
+    if (reacaoLoading || reacaoEnviada) return;
+    setReacaoLoading(true);
+    try {
+      if (data?.isMock) {
+        setReacaoEnviada(emoji);
+        return;
+      }
+      const response = await fetch('/api/reacao', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug, emoji }),
+      });
+      if (response.ok) {
+        setReacaoEnviada(emoji);
+        track('reagiu');
+      }
+    } catch (err) {
+      console.error('Erro ao enviar reação:', err);
+    } finally {
+      setReacaoLoading(false);
+    }
+  };
+
+  const compartilhar = async () => {
+    const url = typeof window !== 'undefined' ? window.location.href : '';
+    track('compartilhou');
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: 'Recebi uma surpresa ❤️',
+          text: 'Olha o presente que prepararam pra mim:',
+          url,
+        });
+        setCompartilhado(true);
+        return;
+      }
+    } catch {
+      // usuário cancelou o share nativo — segue para o fallback? não: só sai
+      return;
+    }
+    // Fallback: WhatsApp
+    window.open(
+      `https://wa.me/?text=${encodeURIComponent(`Recebi uma surpresa ❤️ ${url}`)}`,
+      '_blank',
+      'noopener'
+    );
+    setCompartilhado(true);
+  };
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
           <Loader2 className="w-10 h-10 animate-spin text-indigo-600 mx-auto mb-4" />
-          <p className="text-gray-600 font-medium">Abrindo homenagem...</p>
+          <p className="text-gray-600 font-medium">Abrindo...</p>
         </div>
       </div>
     );
   }
 
-  if (error || !data) {
+  if (error || naoEncontrada || !data) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
         <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full text-center border border-gray-100">
           <div className="w-16 h-16 rounded-full bg-rose-100 text-rose-500 flex items-center justify-center mx-auto mb-6">
             <Heart className="w-8 h-8 fill-current" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-3">Homenagem não encontrada</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-3">Página não encontrada</h2>
           <p className="text-gray-600 text-sm leading-relaxed mb-6">
-            {error || 'O link acessado é inválido ou a homenagem correspondente ainda não foi liberada por pagamento.'}
+            {error ||
+              'O link acessado é inválido ou a página correspondente ainda não foi liberada por pagamento.'}
           </p>
           <div className="text-xs text-gray-400">
-            Dica: Se você acabou de pagar, aguarde alguns segundos e atualize a página.
+            Dica: se você acabou de pagar, aguarde alguns segundos e atualize a página.
           </div>
         </div>
       </div>
     );
   }
 
-  const isClassico = data.tema === 'classico';
+  // Modo de simulação local: gate da revelação no client (dev apenas)
+  if (data.isMock && aindaNaoRevelada(data.revelar_em)) {
+    return (
+      <CountdownReveal
+        nomeDestinatario={data.nome_destinatario}
+        revelarEm={data.revelar_em!}
+        tema={data.tema}
+      />
+    );
+  }
 
-  return (
-    <div className={`min-h-screen pb-24 ${
-      isClassico 
-        ? 'bg-[#F4F1EA] text-[#2C2A27] font-serif transition-colors duration-500' 
-        : 'bg-gradient-to-tr from-[#E6F4F1] via-[#F3FAFB] to-[#FDF6E2] text-[#1E302E] font-sans transition-colors duration-500'
-    }`}>
-      {/* Floating Sparkles & Hearts (Decorative Animation) */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden select-none">
-        <div className="absolute top-[10%] left-[5%] animate-float text-red-300 opacity-60">❤️</div>
-        <div className="absolute top-[25%] right-[10%] animate-float-delay text-yellow-300 opacity-70">✨</div>
-        <div className="absolute bottom-[30%] left-[8%] animate-float-delay-2 text-rose-300 opacity-60">❤️</div>
-        <div className="absolute bottom-[15%] right-[7%] animate-float text-sky-300 opacity-70">✨</div>
+  const classico = normalizarTema(data.tema) !== 'descontraido';
+  const fundo = classico
+    ? 'bg-[#F4F1EA] text-[#2C2A27] font-serif'
+    : 'bg-gradient-to-tr from-[#E6F4F1] via-[#F3FAFB] to-[#FDF6E2] text-[#1E302E] font-sans';
+
+  // ----------------------------------------------------
+  // CERIMÔNIA — convite: "toque para abrir o presente"
+  // ----------------------------------------------------
+  if (fase === 'convite') {
+    return (
+      <div className={`min-h-screen flex items-center justify-center px-4 ${fundo}`}>
+        <button
+          onClick={abrirPresente}
+          className="text-center space-y-8 py-16 max-w-sm mx-auto group cursor-pointer"
+        >
+          <div
+            className={`w-24 h-24 rounded-full mx-auto flex items-center justify-center text-4xl transition-transform duration-500 group-hover:scale-105 group-active:scale-95 shadow-lg ${
+              classico ? 'bg-[#FAF8F5] border border-[#D1C9BA]' : 'bg-white border border-teal-100'
+            }`}
+          >
+            🎁
+          </div>
+          <div className="space-y-3">
+            <h1
+              className={`text-2xl sm:text-3xl leading-snug ${
+                classico ? 'font-normal' : 'font-extrabold text-teal-950'
+              }`}
+            >
+              Alguém preparou uma surpresa para você.
+            </h1>
+            <p
+              className={`text-sm tracking-wide ${
+                classico ? 'text-[#8C7A5C] uppercase tracking-widest' : 'text-teal-700/70 font-bold uppercase'
+              }`}
+            >
+              Toque para abrir o presente
+            </p>
+          </div>
+        </button>
       </div>
+    );
+  }
 
-      <div className="max-w-xl mx-auto px-4 pt-12 relative z-10">
-        
-        {/* Main Homenagem Card */}
-        <div className={`shadow-2xl rounded-3xl overflow-hidden border ${
-          isClassico 
-            ? 'bg-[#FAF8F5] border-[#E5E0D5] p-8 sm:p-10' 
-            : 'bg-white/80 backdrop-blur-md border-teal-50 p-8 sm:p-10 shadow-emerald-100/50'
-        }`}>
-          
-          {/* Card Border Accent */}
-          {isClassico ? (
-            <div className="border border-[#D1C9BA] p-6 sm:p-8 rounded-2xl relative">
-              <div className="absolute top-2 left-2 text-[#D1C9BA] text-xs">◆</div>
-              <div className="absolute top-2 right-2 text-[#D1C9BA] text-xs">◆</div>
-              <div className="absolute bottom-2 left-2 text-[#D1C9BA] text-xs">◆</div>
-              <div className="absolute bottom-2 right-2 text-[#D1C9BA] text-xs">◆</div>
-              
-              {/* Content Wrapper */}
-              <div className="space-y-8">
-                
-                {/* Header */}
-                <div className="text-center">
-                  <div className="text-[#8C7A5C] text-sm tracking-widest uppercase mb-2">Com amor para</div>
-                  <h1 className="text-3xl sm:text-4xl font-normal text-[#1A1817] leading-tight">
-                    {data.nome_destinatario}
-                  </h1>
-                  <div className="w-12 h-px bg-[#8C7A5C] mx-auto mt-4"></div>
-                </div>
+  // ----------------------------------------------------
+  // CERIMÔNIA — nome sozinho por ~1.8s (reconhecimento pessoal)
+  // ----------------------------------------------------
+  if (fase === 'nome') {
+    return (
+      <div className={`min-h-screen flex items-center justify-center px-4 ${fundo}`}>
+        <div className="text-center animate-fadeIn">
+          <div
+            className={`text-sm tracking-widest uppercase mb-4 ${
+              classico ? 'text-[#8C7A5C]' : 'text-emerald-700/70 font-bold'
+            }`}
+          >
+            Para você,
+          </div>
+          <h1
+            className={`text-4xl sm:text-5xl leading-tight ${
+              classico ? 'font-normal text-[#1A1817]' : 'font-black text-teal-950'
+            }`}
+          >
+            {data.nome_destinatario}
+          </h1>
+        </div>
+      </div>
+    );
+  }
 
-                {/* Classic Polaroid Photo Gallery */}
-                <div className="space-y-6">
-                  {data.midias.map((url, idx) => (
-                    <div 
-                      key={idx} 
-                      className="bg-white p-4 pb-8 shadow-md border border-[#E5E0D5] rotate-[-1deg] even:rotate-[1.5deg] max-w-sm mx-auto transition-transform hover:scale-102 duration-300"
-                    >
-                      <div className="aspect-square w-full overflow-hidden bg-stone-100 relative">
-                        <Image 
-                          src={url} 
-                          alt={`Memória ${idx + 1}`} 
-                          fill
-                          sizes="(max-width: 640px) 100vw, 50vw"
-                          className="object-cover grayscale-[15%] contrast-[105%]"
-                          priority={idx === 0}
-                        />
-                      </div>
-                      <div className="mt-4 text-center text-xs text-[#8C7A5C] tracking-wide font-sans uppercase">
-                        Recordação Especial #{idx + 1}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+  // ----------------------------------------------------
+  // CONTEÚDO — com transição suave de entrada
+  // ----------------------------------------------------
+  return (
+    <div className={`min-h-screen pb-24 ${fundo}`}>
+      <div
+        className={`max-w-xl mx-auto px-4 pt-10 transition-all duration-1000 ease-out ${
+          conteudoVisivel ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'
+        }`}
+      >
+        <PageRenderer
+          conteudo={{
+            nome_destinatario: data.nome_destinatario,
+            mensagem: data.mensagem,
+            blocos: data.blocos,
+            midias: normalizarMidias(data.midias),
+            tema: normalizarTema(data.tema),
+          }}
+        />
 
-                {/* Letter Message */}
-                <div className="text-[#3A3530] text-base sm:text-lg leading-relaxed whitespace-pre-line text-justify pl-2 border-l-2 border-[#D1C9BA]/50">
-                  {data.mensagem}
-                </div>
-
-                {/* Classic Footer */}
-                <div className="text-center pt-4">
-                  <Heart className="w-6 h-6 text-red-700/80 mx-auto fill-current animate-pulse" />
-                  <div className="text-xs text-[#8C7A5C] tracking-wider uppercase mt-2">Feliz Dia dos Pais</div>
-                </div>
-
-              </div>
+        {/* Reação de volta (T2.7) — discreta, canal privado para quem criou */}
+        <div
+          className={`mt-8 rounded-3xl border p-6 text-center ${
+            classico ? 'bg-[#FAF8F5] border-[#E5E0D5]' : 'bg-white/80 border-teal-100'
+          }`}
+        >
+          {reacaoEnviada ? (
+            <div className="space-y-1">
+              <div className="text-3xl">{reacaoEnviada}</div>
+              <p className={`text-sm ${classico ? 'text-[#6B5D45] italic' : 'text-teal-800 font-medium'}`}>
+                Recado enviado. Quem preparou isso vai saber que você abriu.
+              </p>
             </div>
           ) : (
-            // DIVERTIDO / DESCONTRAÍDO THEME
-            <div className="space-y-8">
-              
-              {/* Top Bubble Badge */}
-              <div className="flex justify-center">
-                <div className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-extrabold uppercase tracking-wider animate-bounce">
-                  <Sparkles className="w-3.5 h-3.5 fill-current text-yellow-500" />
-                  <span>Você é o melhor!</span>
-                </div>
+            <div className="space-y-4">
+              <p className={`text-sm ${classico ? 'text-[#6B5D45]' : 'text-teal-800/80 font-medium'}`}>
+                Deixe um recado de volta — um toque basta.
+              </p>
+              <div className="flex justify-center gap-3">
+                {EMOJIS_REACAO.map((emoji) => (
+                  <button
+                    key={emoji}
+                    onClick={() => enviarReacao(emoji)}
+                    disabled={reacaoLoading}
+                    className={`w-12 h-12 rounded-full text-2xl flex items-center justify-center transition-transform hover:scale-110 active:scale-95 disabled:opacity-50 ${
+                      classico
+                        ? 'bg-white border border-[#E5E0D5]'
+                        : 'bg-teal-50 border border-teal-100'
+                    }`}
+                    aria-label={`Reagir com ${emoji}`}
+                  >
+                    {emoji}
+                  </button>
+                ))}
               </div>
-
-              {/* Title Header */}
-              <div className="text-center">
-                <h1 className="text-3xl sm:text-4xl font-black text-teal-950 tracking-tight leading-none mb-2">
-                  Pai {data.nome_destinatario}
-                </h1>
-                <p className="text-sm font-semibold text-teal-600/80">
-                  Uma homenagem cheia de carinho e risadas!
-                </p>
-              </div>
-
-              {/* Collaged Rounded Photos with rotation */}
-              <div className="flex flex-wrap gap-4 justify-center py-4">
-                {data.midias.map((url, idx) => {
-                  const rotations = ['-rotate-3', 'rotate-2', '-rotate-1', 'rotate-3', 'rotate-1'];
-                  const rotClass = rotations[idx % rotations.length];
-                  
-                  return (
-                    <div 
-                      key={idx} 
-                      className={`relative w-40 sm:w-48 aspect-square rounded-3xl overflow-hidden shadow-lg border-4 border-white bg-slate-100 ${rotClass} transition-transform hover:scale-105 hover:rotate-0 duration-300 flex-shrink-0`}
-                    >
-                      <Image 
-                        src={url} 
-                        alt={`Memória ${idx + 1}`} 
-                        fill
-                        sizes="(max-width: 640px) 160px, 192px"
-                        className="object-cover"
-                        priority={idx === 0}
-                      />
-                      <div className="absolute bottom-2 right-2 bg-emerald-500 text-white rounded-full p-1 shadow">
-                        <Heart className="w-3.5 h-3.5 fill-current" />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Message bubble card */}
-              <div className="relative">
-                <div className="absolute -top-3 -left-3 text-3xl">💬</div>
-                <div className="bg-teal-50/50 border border-teal-100 rounded-3xl p-6 sm:p-8 text-teal-950 text-base sm:text-lg leading-relaxed whitespace-pre-line shadow-sm relative z-10 font-medium">
-                  {data.mensagem}
-                </div>
-                <div className="absolute -bottom-2 -right-2 text-3xl">🎉</div>
-              </div>
-
-              {/* Fun/Playful Footer */}
-              <div className="text-center pt-4 border-t border-teal-50 flex flex-col items-center gap-2">
-                <div className="flex gap-1 text-yellow-500">
-                  <span>⭐️</span><span>⭐️</span><span>⭐️</span><span>⭐️</span><span>⭐️</span>
-                </div>
-                <div className="text-xs font-bold text-teal-700/70 tracking-widest uppercase">
-                  Melhor Pai do Mundo Certificado
-                </div>
-              </div>
-
             </div>
           )}
-
         </div>
 
-        {/* Small Audio/Playlist Hint for future expansion (v2+) */}
-        {data.plano === 'completo' && (
-          <div className="mt-6 flex items-center justify-center gap-3 px-4 py-3 rounded-2xl bg-white/60 border border-gray-150 shadow-sm text-xs font-semibold text-gray-500">
-            <Music className="w-4 h-4 text-indigo-500 animate-spin-slow" />
-            <span>Playlist de Dia dos Pais em breve no Plano Premium!</span>
-          </div>
-        )}
-
+        {/* Compartilhar (T2.4) */}
+        <div className="mt-6 text-center">
+          <button
+            onClick={compartilhar}
+            className={`inline-flex items-center gap-2 px-6 py-3 rounded-full text-sm font-semibold transition-all hover:scale-[1.02] active:scale-95 shadow-sm ${
+              classico
+                ? 'bg-[#2C2A27] text-[#FAF8F5]'
+                : 'bg-teal-900 text-white'
+            }`}
+          >
+            {compartilhado ? <Check className="w-4 h-4" /> : <Share2 className="w-4 h-4" />}
+            <span>{compartilhado ? 'Compartilhado!' : 'Compartilhar essa surpresa'}</span>
+          </button>
+        </div>
       </div>
     </div>
   );
