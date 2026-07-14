@@ -1,12 +1,25 @@
-interface PageDraft {
+import type { Bloco, Midia } from '@/lib/types';
+
+/**
+ * Modo de simulação local (APENAS desenvolvimento, sem credenciais Supabase):
+ * rascunhos ficam em IndexedDB com as fotos em base64. Em produção este
+ * caminho nunca é usado — o gatilho de simulação do webhook responde 404.
+ */
+
+export interface PageDraft {
   id: string;
+  email_comprador?: string;
   nome_destinatario: string;
-  mensagem: string;
-  midias: string[];
+  mensagem?: string | null;
+  blocos?: Bloco[] | null;
+  /** Formato novo ([{url, legenda}]) ou legado (string[] em base64/URL). */
+  midias: Array<Midia | string>;
   tema: string;
   pago: boolean;
   plano: string;
   slug?: string;
+  revelar_em?: string | null;
+  reacao_emoji?: string | null;
   isMock?: boolean;
   criado_em?: string;
 }
@@ -41,7 +54,7 @@ function getDB(): Promise<IDBDatabase> {
   });
 }
 
-export async function saveDraftToIndexedDB(id: string, data: PageDraft): Promise<void> {
+export async function saveDraftToIndexedDB(_id: string, data: PageDraft): Promise<void> {
   const db = await getDB();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE_NAME, 'readwrite');

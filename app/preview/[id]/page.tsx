@@ -1,41 +1,34 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import Image from 'next/image';
-import { supabase } from '@/lib/supabase';
-import { getDraftFromIndexedDB, saveDraftToIndexedDB } from '@/lib/localDatabase';
+import { getDraftFromIndexedDB, saveDraftToIndexedDB, type PageDraft } from '@/lib/localDatabase';
+import { normalizarMidias, normalizarTema } from '@/lib/types';
+import { PRECO_UNICO_FORMATADO } from '@/lib/config';
+import { track } from '@/lib/analytics';
+import PageRenderer from '@/components/PageRenderer';
 import QRCode from 'qrcode';
 import { jsPDF } from 'jspdf';
-import { 
-  Loader2, 
-  ArrowLeft, 
-  Heart, 
-  CreditCard, 
-  Mail, 
-  Copy, 
-  Check, 
-  QrCode, 
-  Sparkles, 
-  Smartphone, 
+import {
+  Loader2,
+  ArrowLeft,
+  Heart,
+  CreditCard,
+  Mail,
+  Copy,
+  Check,
+  QrCode,
+  Sparkles,
+  Smartphone,
   ExternalLink,
   Lock,
   Download,
   FileText,
-  Home
+  Home,
 } from 'lucide-react';
 
-interface PageDraft {
-  id: string;
-  nome_destinatario: string;
-  mensagem: string;
-  midias: string[];
-  tema: string;
-  pago: boolean;
-  plano: string;
-  slug?: string;
-  isMock?: boolean;
-}
+const POLL_INTERVALO_MS = 4500;
+const POLL_LIMITE_MS = 15 * 60 * 1000; // 15 minutos
 
 export default function PreviewPagina() {
   const params = useParams();
@@ -46,12 +39,10 @@ export default function PreviewPagina() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Checkout & Payment states
+  // Checkout & pagamento
   const [email, setEmail] = useState('');
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
-  
-  // Payment Details from API
   const [paymentDetails, setPaymentDetails] = useState<{
     paymentId: string;
     qrCode: string;
@@ -64,11 +55,15 @@ export default function PreviewPagina() {
   const [paid, setPaid] = useState(false);
   const [generatedSlug, setGeneratedSlug] = useState<string | null>(null);
   const [simulationLoading, setSimulationLoading] = useState(false);
+  const [pollExpirado, setPollExpirado] = useState(false);
 
-  // Success Screen specific states
+  // Tela de sucesso
   const [qrUrl, setQrUrl] = useState<string>('');
   const [linkCopied, setLinkCopied] = useState(false);
 
+  const pollInicioRef = useRef<number>(0);
+
+  // ---- Carregamento do rascunho ----
   useEffect(() => {
     if (!id) return;
 
@@ -77,10 +72,11 @@ export default function PreviewPagina() {
         setLoading(true);
         setError(null);
 
-        // 1. Try reading from IndexedDB first (for simulation mode)
+        // 1. IndexedDB primeiro (modo de simulação local)
         const localDraft = await getDraftFromIndexedDB(id);
         if (localDraft) {
           setDraft(localDraft);
+          setEmail(localDraft.email_comprador || '');
           if (localDraft.pago) {
             setPaid(true);
             setGeneratedSlug(localDraft.slug || null);
@@ -89,85 +85,90 @@ export default function PreviewPagina() {
           return;
         }
 
-        // 2. Fetch from Supabase
-        const { data, error: dbError } = await supabase
-          .from('paginas')
-          .select('*')
-          .eq('id', id)
-          .single();
-
-        if (dbError) {
-          throw dbError;
+        // 2. Rota de servidor (a anon key não lê a tabela — T0.2)
+        const response = await fetch(`/api/paginas/${id}`);
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(
+            errData.error ||
+              'Não foi possível carregar a prévia. Verifique o link ou tente novamente.'
+          );
         }
+        const data = (await response.json()) as PageDraft;
 
         setDraft(data);
+        setEmail(data.email_comprador || '');
         if (data.pago) {
           setPaid(true);
           setGeneratedSlug(data.slug || null);
         }
       } catch (err: unknown) {
         console.error(err);
-        const msg = err instanceof Error ? err.message : 'Não foi possível carregar a prévia do presente. Verifique o ID ou se a conexão com o banco de dados está correta.';
-        setError(msg);
+        setError(err instanceof Error ? err.message : 'Não foi possível carregar a prévia.');
       } finally {
         setLoading(false);
       }
     };
 
     fetchDraft();
+    track('chegou_preview');
   }, [id]);
 
-  // Polling for payment status (only if real database & checkout is initiated)
+  // ---- Polling do status de pagamento (T1.4) ----
+  const verificarStatus = useCallback(async (): Promise<boolean> => {
+    try {
+      const response = await fetch(`/api/pagina-status/${id}`);
+      if (!response.ok) return false;
+      const data = await response.json();
+      if (data.pago) {
+        setPaid(true);
+        setGeneratedSlug(data.slug || null);
+        track('pagou');
+        // espelha no IndexedDB se houver rascunho local
+        const localDraft = await getDraftFromIndexedDB(id);
+        if (localDraft) {
+          localDraft.pago = true;
+          localDraft.slug = data.slug;
+          await saveDraftToIndexedDB(id, localDraft);
+        }
+        return true;
+      }
+    } catch (err) {
+      console.error('Erro ao verificar status do pagamento:', err);
+    }
+    return false;
+  }, [id]);
+
   useEffect(() => {
     if (!paymentDetails || paid || paymentDetails.isMock) return;
 
+    pollInicioRef.current = Date.now();
+    setPollExpirado(false);
+
     const interval = setInterval(async () => {
-      try {
-        // Query Supabase database to see if pago is updated to true
-        const { data } = await supabase
-          .from('paginas')
-          .select('pago, slug')
-          .eq('id', id)
-          .single();
-
-        if (data && data.pago) {
-          setPaid(true);
-          setGeneratedSlug(data.slug || null);
-          
-          // Also update IndexedDB draft if cached
-          const localDraft = await getDraftFromIndexedDB(id);
-          if (localDraft) {
-            localDraft.pago = true;
-            localDraft.slug = data.slug;
-            await saveDraftToIndexedDB(id, localDraft);
-          }
-
-          clearInterval(interval);
-        }
-      } catch (err) {
-        console.error('Error polling payment status:', err);
+      if (Date.now() - pollInicioRef.current > POLL_LIMITE_MS) {
+        setPollExpirado(true);
+        clearInterval(interval);
+        return;
       }
-    }, 3000);
+      const confirmado = await verificarStatus();
+      if (confirmado) clearInterval(interval);
+    }, POLL_INTERVALO_MS);
 
     return () => clearInterval(interval);
-  }, [paymentDetails, paid, id]);
+  }, [paymentDetails, paid, verificarStatus]);
 
-  // Generate QR Code data URL when paid
+  // ---- QR code da tela de sucesso ----
   useEffect(() => {
     if (paid && generatedSlug) {
       const origin = typeof window !== 'undefined' ? window.location.origin : '';
       const publicUrl = `${origin}/p/${generatedSlug}`;
-      
-      QRCode.toDataURL(publicUrl, { width: 450, margin: 1 })
-        .then(url => {
-          setQrUrl(url);
-        })
-        .catch(err => {
-          console.error('Error generating QR code:', err);
-        });
 
-      // Also ensure it is registered in IndexedDB under slug_ for simulated direct navigation
-      getDraftFromIndexedDB(id).then(localDraft => {
+      QRCode.toDataURL(publicUrl, { width: 450, margin: 1 })
+        .then((url) => setQrUrl(url))
+        .catch((err) => console.error('Erro ao gerar QR code:', err));
+
+      getDraftFromIndexedDB(id).then((localDraft) => {
         if (localDraft) {
           localDraft.pago = true;
           localDraft.slug = generatedSlug;
@@ -177,6 +178,7 @@ export default function PreviewPagina() {
     }
   }, [paid, generatedSlug, id]);
 
+  // ---- Checkout ----
   const handleCheckoutSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !draft) return;
@@ -187,14 +189,8 @@ export default function PreviewPagina() {
     try {
       const response = await fetch('/api/checkout', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          pageId: draft.id,
-          email: email.trim(),
-          plano: draft.plano,
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pageId: draft.id, email: email.trim() }),
       });
 
       if (!response.ok) {
@@ -210,10 +206,10 @@ export default function PreviewPagina() {
         isMock: paymentData.isMock,
         amount: paymentData.amount,
       });
+      track('iniciou_pagamento');
     } catch (err: unknown) {
       console.error(err);
-      const msg = err instanceof Error ? err.message : 'Erro ao processar checkout.';
-      setError(msg);
+      setError(err instanceof Error ? err.message : 'Erro ao processar checkout.');
     } finally {
       setCheckoutLoading(false);
     }
@@ -234,7 +230,6 @@ export default function PreviewPagina() {
     setTimeout(() => setLinkCopied(false), 2000);
   };
 
-  // Download QR Code PNG
   const downloadQRCodePNG = () => {
     if (!qrUrl) return;
     const link = document.createElement('a');
@@ -245,27 +240,19 @@ export default function PreviewPagina() {
     document.body.removeChild(link);
   };
 
-  // Download printable card PDF
   const downloadCardPDF = () => {
     if (!qrUrl || !draft) return;
-    
-    // A5/A6 style Card Document (100mm x 150mm)
-    const doc = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: [100, 150]
-    });
 
-    // 1. Draw elegant outer double borders
-    doc.setDrawColor(180, 150, 100); // Gold-brown tone
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [100, 150] });
+
+    doc.setDrawColor(180, 150, 100);
     doc.setLineWidth(0.8);
     doc.rect(5, 5, 90, 140);
-    
+
     doc.setDrawColor(210, 195, 170);
     doc.setLineWidth(0.3);
     doc.rect(6.5, 6.5, 87, 137);
 
-    // 2. Draw card contents
     doc.setTextColor(26, 24, 23);
     doc.setFont('Times', 'normal');
     doc.setFontSize(8);
@@ -273,19 +260,16 @@ export default function PreviewPagina() {
 
     doc.setFont('Times', 'italic');
     doc.setFontSize(16);
-    doc.text(`Para um Pai Especial,`, 50, 30, { align: 'center' });
+    doc.text('Para um Pai Especial,', 50, 30, { align: 'center' });
     doc.setFont('Times', 'bold');
     doc.setFontSize(18);
     doc.text(`${draft.nome_destinatario}!`, 50, 38, { align: 'center' });
 
-    // Divider
     doc.setDrawColor(210, 195, 170);
     doc.line(40, 44, 60, 44);
 
-    // 3. Inject QR Code
     doc.addImage(qrUrl, 'PNG', 20, 50, 60, 60);
 
-    // 4. Instructions
     doc.setFont('Helvetica', 'normal');
     doc.setFontSize(9);
     doc.setTextColor(80, 80, 80);
@@ -294,16 +278,16 @@ export default function PreviewPagina() {
 
     doc.setFont('Times', 'italic');
     doc.setFontSize(11);
-    doc.setTextColor(190, 40, 40); // Red
-    doc.text('Com todo o meu amor. S2', 50, 136, { align: 'center' });
+    doc.setTextColor(190, 40, 40);
+    doc.text('Com todo o meu amor.', 50, 136, { align: 'center' });
 
     doc.save(`cartao-presente-dia-dos-pais-${generatedSlug}.pdf`);
   };
 
-  // Simulate payment confirmation for Mock Mode
+  // ---- Simulação (apenas dev, sem credenciais) ----
   const triggerSimulationUnlock = async () => {
     if (!paymentDetails || !draft) return;
-    
+
     setSimulationLoading(true);
     try {
       const response = await fetch(
@@ -317,12 +301,9 @@ export default function PreviewPagina() {
       }
 
       const data = await response.json();
-      
-      // Update local states
       setPaid(true);
       setGeneratedSlug(data.slug);
 
-      // Update IndexedDB draft
       const localDraft = await getDraftFromIndexedDB(draft.id);
       if (localDraft) {
         localDraft.pago = true;
@@ -331,8 +312,7 @@ export default function PreviewPagina() {
       }
     } catch (err: unknown) {
       console.error(err);
-      const msg = err instanceof Error ? err.message : 'Erro na simulação do pagamento.';
-      alert(msg);
+      alert(err instanceof Error ? err.message : 'Erro na simulação do pagamento.');
     } finally {
       setSimulationLoading(false);
     }
@@ -372,7 +352,7 @@ export default function PreviewPagina() {
   if (!draft) return null;
 
   // ----------------------------------------------------
-  // SUCCESS SCREEN STATE (PAID & ACTIVATED)
+  // TELA DE SUCESSO (PAGO)
   // ----------------------------------------------------
   if (paid && generatedSlug) {
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
@@ -381,29 +361,36 @@ export default function PreviewPagina() {
     return (
       <main className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-emerald-50 text-gray-800 py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-xl mx-auto">
-          
-          {/* Header Card Success */}
           <div className="bg-white rounded-3xl shadow-xl border border-gray-100 p-8 text-center relative overflow-hidden">
-            {/* Green border accent */}
             <div className="absolute top-0 inset-x-0 h-2 bg-emerald-500"></div>
 
-            {/* Checkmark Animation Icon */}
-            <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6 scale-up-animation">
+            <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6">
               <Check className="w-10 h-10 stroke-[3px]" />
             </div>
 
             <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight mb-2">
-              Homenagem Ativada!
+              O presente está pronto!
             </h1>
-            <p className="text-sm text-gray-500 leading-relaxed mb-8">
-              O pagamento foi confirmado e a página especial para o seu pai já está no ar. Agora você pode compartilhar o link ou imprimir o cartão físico com o QR Code.
+            <p className="text-sm text-gray-500 leading-relaxed mb-4">
+              Pagamento confirmado. Enviamos o link e o QR Code também para{' '}
+              <strong>{email || draft.email_comprador || 'seu e-mail'}</strong> — guarde esse
+              e-mail, ele é seu acesso à página.
             </p>
+            {draft.revelar_em && new Date(draft.revelar_em).getTime() > Date.now() && (
+              <p className="text-xs bg-amber-50 border border-amber-100 text-amber-800 rounded-xl px-4 py-3 mb-6">
+                Você agendou a revelação: quem abrir antes de 09/08 verá uma contagem regressiva.
+                Pode entregar o cartão sem estragar a surpresa.
+              </p>
+            )}
 
-            {/* Target URL Share Box */}
             <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 text-left mb-8 space-y-2">
-              <span className="block text-xxs font-bold uppercase tracking-wider text-gray-400">Link da página pública</span>
+              <span className="block text-xxs font-bold uppercase tracking-wider text-gray-400">
+                Link da página pública
+              </span>
               <div className="flex items-center justify-between gap-3">
-                <span className="truncate text-sm font-semibold font-mono text-indigo-600">{targetUrl}</span>
+                <span className="truncate text-sm font-semibold font-mono text-indigo-600">
+                  {targetUrl}
+                </span>
                 <button
                   onClick={handleCopyLink}
                   className="px-3.5 py-2 rounded-xl bg-white border border-gray-200 hover:bg-gray-50 text-xs font-bold flex items-center gap-1.5 flex-shrink-0 transition-colors shadow-sm"
@@ -423,29 +410,24 @@ export default function PreviewPagina() {
               </div>
             </div>
 
-            {/* Generated QR Code Card */}
             <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100 inline-block mx-auto mb-8 text-center shadow-sm">
               <div className="bg-white p-4 rounded-xl border border-gray-200 inline-block mb-3">
                 {qrUrl ? (
                   /* eslint-disable-next-line @next/next/no-img-element */
-                  <img
-                    src={qrUrl}
-                    alt="Homenagem QR Code"
-                    className="w-44 h-44 mx-auto"
-                  />
+                  <img src={qrUrl} alt="QR Code do presente" className="w-44 h-44 mx-auto" />
                 ) : (
                   <div className="w-44 h-44 flex items-center justify-center">
                     <Loader2 className="w-6 h-6 animate-spin text-gray-300" />
                   </div>
                 )}
               </div>
-              <span className="block text-xxs font-bold text-gray-400 uppercase tracking-wide">Pai {draft.nome_destinatario}</span>
+              <span className="block text-xxs font-bold text-gray-400 uppercase tracking-wide">
+                Para {draft.nome_destinatario}
+              </span>
             </div>
 
-            {/* Download Action Buttons */}
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-4">
-                {/* Download PNG */}
                 <button
                   onClick={downloadQRCodePNG}
                   disabled={!qrUrl}
@@ -455,7 +437,6 @@ export default function PreviewPagina() {
                   <span>Baixar QR Code (PNG)</span>
                 </button>
 
-                {/* Download PDF Card */}
                 <button
                   onClick={downloadCardPDF}
                   disabled={!qrUrl}
@@ -466,52 +447,48 @@ export default function PreviewPagina() {
                 </button>
               </div>
 
-              {/* View Public Homenagem */}
               <a
                 href={`/p/${generatedSlug}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-full py-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm transition-all flex items-center justify-center gap-2 shadow-md shadow-emerald-100 hover:shadow-lg"
               >
-                <span>Ver Homenagem Publicada</span>
+                <span>Ver a página publicada</span>
                 <ExternalLink className="w-4.5 h-4.5" />
               </a>
 
-              {/* Back to Home / Create New */}
               <button
                 onClick={() => router.push('/criar')}
-                className="text-xs font-semibold text-gray-400 hover:text-gray-600 transition-colors pt-2 block mx-auto flex items-center gap-1.5"
+                className="text-xs font-semibold text-gray-400 hover:text-gray-600 transition-colors pt-2 mx-auto flex items-center gap-1.5"
               >
                 <Home className="w-3.5 h-3.5" />
-                <span>Criar outra homenagem</span>
+                <span>Criar outro presente</span>
               </button>
             </div>
-
           </div>
-
         </div>
       </main>
     );
   }
 
   // ----------------------------------------------------
-  // DRAFT PREVIEW STATE (UNPAID)
+  // PRÉVIA DO RASCUNHO (NÃO PAGO)
   // ----------------------------------------------------
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800 pb-20 relative">
+      {/* Banner persistente (T1.6) */}
       <div className="bg-amber-500 text-white py-3 px-4 text-center text-sm font-semibold flex items-center justify-center gap-2 sticky top-0 z-40 shadow-sm">
         <Lock className="w-4 h-4" />
-        <span>Esta é uma prévia. Realize o pagamento para ativar a página pública e gerar o QR Code.</span>
+        <span>Prévia — pagamento pendente. Pague para ativar a página e gerar o QR Code.</span>
       </div>
 
-      {/* Navigation Header */}
       <header className="max-w-4xl mx-auto px-4 py-6 flex items-center justify-between">
         <button
           onClick={() => router.push('/criar')}
           className="flex items-center gap-2 text-sm font-semibold text-gray-600 hover:text-gray-950 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>Editar Conteúdo</span>
+          <span>Editar conteúdo</span>
         </button>
 
         <button
@@ -519,87 +496,42 @@ export default function PreviewPagina() {
           className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold shadow-md shadow-indigo-100 hover:shadow-lg transition-all hover:scale-[1.02] active:scale-95"
         >
           <CreditCard className="w-4 h-4" />
-          <span>Confirmar e Pagar (R$ {draft.plano === 'completo' ? '14,90' : '9,90'})</span>
+          <span>Confirmar e pagar ({PRECO_UNICO_FORMATADO})</span>
         </button>
       </header>
 
-      {/* FATHER'S DAY PREVIEW CANVAS */}
-      <main className="max-w-2xl mx-auto px-4 mt-6">
-        <div className={`p-8 sm:p-12 rounded-3xl shadow-xl bg-white border border-gray-150 relative overflow-hidden ${
-          draft.tema === 'classico' 
-            ? 'font-serif bg-stone-50/50 border-stone-200' 
-            : 'font-sans bg-emerald-50/20 border-emerald-100'
-        }`}>
-          {/* Theme visual accents */}
-          {draft.tema === 'classico' ? (
-            <div className="absolute top-0 inset-x-0 h-2 bg-stone-800"></div>
-          ) : (
-            <div className="absolute top-0 inset-x-0 h-2 bg-gradient-to-r from-emerald-500 via-teal-500 to-sky-500"></div>
-          )}
-
-          {/* Header */}
-          <div className="text-center mb-8">
-            <Heart className={`w-12 h-12 mx-auto mb-4 animate-pulse ${
-              draft.tema === 'classico' ? 'text-stone-800' : 'text-rose-500 fill-current'
-            }`} />
-            <h1 className={`text-3xl sm:text-4xl font-bold tracking-tight ${
-              draft.tema === 'classico' ? 'text-stone-900' : 'text-teal-950 font-extrabold'
-            }`}>
-              Para você, {draft.nome_destinatario}
-            </h1>
-            <p className="text-sm text-gray-500 mt-2 italic">
-              Um recado muito especial preparado com amor.
-            </p>
-          </div>
-
-          {/* Photo Gallery Grid */}
-          <div className="grid grid-cols-2 gap-4 mb-8">
-            {draft.midias.map((mediaUrl, idx) => (
-              <div 
-                key={idx} 
-                className={`relative rounded-2xl overflow-hidden shadow-sm aspect-square border-4 border-white bg-gray-150 transition-transform hover:scale-102 hover:rotate-1 duration-300 ${
-                  idx === 0 && draft.midias.length % 2 !== 0 ? 'col-span-2 aspect-video' : ''
-                }`}
-              >
-                <Image
-                  src={mediaUrl}
-                  alt={`Memória ${idx + 1}`}
-                  fill
-                  sizes="(max-width: 640px) 100vw, 50vw"
-                  className="object-cover"
-                  priority={idx === 0}
-                />
-              </div>
-            ))}
-          </div>
-
-          {/* Message Box */}
-          <div className={`p-6 sm:p-8 rounded-2xl border text-base sm:text-lg leading-relaxed whitespace-pre-line ${
-            draft.tema === 'classico'
-              ? 'bg-amber-50/20 border-stone-200 text-stone-800'
-              : 'bg-white border-emerald-100 text-teal-900 shadow-sm shadow-emerald-50/50'
-          }`}>
-            {draft.mensagem}
-          </div>
-        </div>
+      {/* Prévia usa o MESMO componente da página pública (T1.3) */}
+      <main className="max-w-2xl mx-auto px-4 mt-4">
+        <PageRenderer
+          conteudo={{
+            nome_destinatario: draft.nome_destinatario,
+            mensagem: draft.mensagem,
+            blocos: draft.blocos,
+            midias: normalizarMidias(draft.midias),
+            tema: normalizarTema(draft.tema),
+          }}
+        />
       </main>
 
-      {/* CHECKOUT & EMAIL MODAL */}
+      {/* MODAL DE CHECKOUT */}
       {showCheckoutModal && !paymentDetails && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl p-6 sm:p-8 relative overflow-hidden border border-gray-100">
             <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-2 flex items-center gap-2">
               <Mail className="w-5 h-5 text-indigo-600" />
               <span>E-mail para entrega</span>
             </h3>
             <p className="text-sm text-gray-500 mb-6">
-              Informe seu e-mail para receber o link definitivo da página e o QR Code em anexo assim que o Pix for compensado.
+              O link definitivo e o QR Code chegam neste e-mail assim que o Pix for confirmado.
             </p>
 
             <form onSubmit={handleCheckoutSubmit} className="space-y-4">
               <div>
-                <label htmlFor="checkoutEmail" className="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-1">
-                  Seu melhor E-mail
+                <label
+                  htmlFor="checkoutEmail"
+                  className="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-1"
+                >
+                  Seu melhor e-mail
                 </label>
                 <input
                   type="email"
@@ -638,7 +570,7 @@ export default function PreviewPagina() {
                     </>
                   ) : (
                     <>
-                      <span>Gerar Pix</span>
+                      <span>Gerar Pix ({PRECO_UNICO_FORMATADO})</span>
                       <CreditCard className="w-4 h-4" />
                     </>
                   )}
@@ -649,9 +581,9 @@ export default function PreviewPagina() {
         </div>
       )}
 
-      {/* PIX INSTRUCTIONS MODAL */}
+      {/* MODAL DO PIX (com polling de status — T1.4) */}
       {paymentDetails && !paid && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl p-6 sm:p-8 border border-gray-100 text-center">
             {paymentDetails.isMock && (
               <div className="mb-4 py-1 px-3 rounded-full bg-amber-100 text-amber-800 text-xxs font-bold inline-flex items-center gap-1.5 mx-auto">
@@ -662,10 +594,10 @@ export default function PreviewPagina() {
 
             <h3 className="text-xl font-bold text-gray-900 mb-1">Pagamento via Pix</h3>
             <p className="text-xs text-gray-500 mb-6">
-              Escaneie o QR Code abaixo ou copie a chave Pix para concluir sua compra de **R$ {paymentDetails.amount.toFixed(2).replace('.', ',')}**.
+              Escaneie o QR Code abaixo ou copie a chave Pix para concluir sua compra de{' '}
+              <strong>R$ {paymentDetails.amount.toFixed(2).replace('.', ',')}</strong>.
             </p>
 
-            {/* QR Code Graphic Container */}
             <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 inline-block mb-6 relative group">
               {paymentDetails.isMock ? (
                 <div className="w-48 h-48 bg-gray-200 rounded-lg flex flex-col items-center justify-center gap-2 text-gray-400 mx-auto">
@@ -682,7 +614,6 @@ export default function PreviewPagina() {
               )}
             </div>
 
-            {/* Pix Copy and Paste Button */}
             <div className="mb-6">
               <button
                 onClick={handleCopyPix}
@@ -708,13 +639,22 @@ export default function PreviewPagina() {
               </button>
             </div>
 
-            {/* Waiting State Spinner */}
-            <div className="flex items-center justify-center gap-2 text-sm text-gray-500 mb-6 font-medium">
-              <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
-              <span>Aguardando aprovação do pagamento...</span>
-            </div>
+            {pollExpirado ? (
+              <div className="text-xs text-gray-500 mb-6 p-3 rounded-xl bg-gray-50 border border-gray-100 leading-relaxed">
+                Ainda não identificamos o pagamento — mas fique tranquilo: assim que ele for
+                confirmado, <strong>você recebe tudo por e-mail</strong> ({email}). Você também
+                pode fechar esta tela e voltar a este link depois.
+              </div>
+            ) : (
+              <div className="flex items-center justify-center gap-2 text-sm text-gray-500 mb-6 font-medium">
+                <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
+                <span>
+                  Aguardando confirmação... esta tela atualiza sozinha. Se fechar, o link chega
+                  por e-mail.
+                </span>
+              </div>
+            )}
 
-            {/* Simulated Action Overrides */}
             {paymentDetails.isMock && (
               <button
                 onClick={triggerSimulationUnlock}

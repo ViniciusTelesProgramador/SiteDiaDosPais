@@ -1,91 +1,136 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import Link from 'next/link';
+import { isSupabaseConfigured } from '@/lib/supabase';
 import { saveDraftToIndexedDB } from '@/lib/localDatabase';
-import { 
-  Heart, 
-  Upload, 
-  Trash2, 
-  Palette, 
-  Sparkles, 
-  Check, 
-  Loader2, 
+import { comprimirFoto } from '@/lib/imagem';
+import { isEmailValido } from '@/lib/utils';
+import { track } from '@/lib/analytics';
+import {
+  PERGUNTAS_GUIADAS,
+  MIN_BLOCOS,
+  TEMAS,
+  DATA_REVELACAO_PADRAO,
+  PRECO_UNICO_FORMATADO,
+  type TemaId,
+} from '@/lib/config';
+import type { Bloco, Midia } from '@/lib/types';
+import PageRenderer from '@/components/PageRenderer';
+import {
+  Heart,
+  Upload,
+  Trash2,
+  Loader2,
   ArrowRight,
-  AlertCircle
+  ArrowLeft,
+  AlertCircle,
+  Eye,
+  X,
+  Check,
+  CalendarHeart,
+  Zap,
 } from 'lucide-react';
 
-interface PhotoFile {
+interface FotoForm {
   file: File;
   previewUrl: string;
+  legenda: string;
 }
+
+type Etapa = 'dados' | 'perguntas' | 'fechamento' | 'fotos';
 
 export default function CriarPresente() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Form State
+  // ---- Estado do formulário ----
+  const [email, setEmail] = useState('');
   const [nomePai, setNomePai] = useState('');
+  const [respostas, setRespostas] = useState<Record<string, string>>({});
+  const [perguntaIdx, setPerguntaIdx] = useState(0);
   const [mensagem, setMensagem] = useState('');
-  const [photos, setPhotos] = useState<PhotoFile[]>([]);
-  const [tema, setTema] = useState<'classico' | 'divertido'>('classico');
-  const [plano, setPlano] = useState<'basico' | 'completo'>('basico');
+  const [fotos, setFotos] = useState<FotoForm[]>([]);
+  const [tema, setTema] = useState<TemaId>('classico');
+  const [revelarModo, setRevelarModo] = useState<'diadospais' | 'agora'>('diadospais');
+  const [aceitouTermos, setAceitouTermos] = useState(false);
 
-  // UI / Logic States
-  const [step, setStep] = useState(1);
+  // ---- Estado de UI ----
+  const [etapa, setEtapa] = useState<Etapa>('dados');
   const [loading, setLoading] = useState(false);
+  const [comprimindo, setComprimindo] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [mostrarPreview, setMostrarPreview] = useState(false);
 
-  // Check if Supabase is properly configured
-  const isSupabaseConfigured = () => {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    return url && !url.includes('placeholder') && key && !key.includes('placeholder');
-  };
+  useEffect(() => {
+    track('iniciou_formulario');
+  }, []);
 
-  // Image validation and handlers
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const blocosPreenchidos: Bloco[] = PERGUNTAS_GUIADAS.filter((p) =>
+    respostas[p.id]?.trim()
+  ).map((p) => ({
+    pergunta_id: p.id,
+    titulo: p.titulo,
+    texto: respostas[p.id].trim(),
+  }));
+
+  const conteudoOk = blocosPreenchidos.length >= MIN_BLOCOS || mensagem.trim().length > 0;
+
+  const midiasPreview: Midia[] = fotos.map((f) => ({
+    url: f.previewUrl,
+    legenda: f.legenda.trim() || undefined,
+  }));
+
+  // ---- Fotos (com compressão — RF09/T2.2) ----
+  const handleFotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
     setError(null);
 
-    const filesArray = Array.from(e.target.files);
-    
-    // Check if total photos would exceed 5
-    if (photos.length + filesArray.length > 5) {
+    const arquivos = Array.from(e.target.files);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+
+    if (fotos.length + arquivos.length > 5) {
       setError('Você pode enviar no máximo 5 fotos.');
       return;
     }
 
-    const validPhotos: PhotoFile[] = [];
-
-    for (const file of filesArray) {
-      // Validate type (must be image)
-      if (!file.type.startsWith('image/')) {
-        setError(`O arquivo ${file.name} não é uma imagem válida.`);
-        continue;
+    setComprimindo(true);
+    try {
+      for (const arquivo of arquivos) {
+        if (!arquivo.type.startsWith('image/')) {
+          setError(`O arquivo ${arquivo.name} não é uma imagem válida.`);
+          continue;
+        }
+        if (arquivo.size > 25 * 1024 * 1024) {
+          setError(`A imagem ${arquivo.name} é grande demais (máx. 25MB).`);
+          continue;
+        }
+        try {
+          const comprimida = await comprimirFoto(arquivo);
+          setFotos((prev) =>
+            prev.length >= 5
+              ? prev
+              : [
+                  ...prev,
+                  {
+                    file: comprimida,
+                    previewUrl: URL.createObjectURL(comprimida),
+                    legenda: '',
+                  },
+                ]
+          );
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Erro ao processar a imagem.');
+        }
       }
-
-      // Validate size (max 5MB = 5 * 1024 * 1024 bytes)
-      if (file.size > 5 * 1024 * 1024) {
-        setError(`A imagem ${file.name} excede o limite de tamanho de 5MB.`);
-        continue;
-      }
-
-      validPhotos.push({
-        file,
-        previewUrl: URL.createObjectURL(file),
-      });
-    }
-
-    setPhotos((prev) => [...prev, ...validPhotos]);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+    } finally {
+      setComprimindo(false);
     }
   };
 
-  const removePhoto = (index: number) => {
-    setPhotos((prev) => {
+  const removerFoto = (index: number) => {
+    setFotos((prev) => {
       const updated = [...prev];
       URL.revokeObjectURL(updated[index].previewUrl);
       updated.splice(index, 1);
@@ -93,135 +138,137 @@ export default function CriarPresente() {
     });
   };
 
-  // Convert files to base64 for simulation storage
-  const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
+  const atualizarLegenda = (index: number, legenda: string) => {
+    setFotos((prev) => prev.map((f, i) => (i === index ? { ...f, legenda } : f)));
+  };
+
+  const fileToBase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.readAsDataURL(file);
       reader.onload = () => resolve(reader.result as string);
-      reader.onerror = (error) => reject(error);
+      reader.onerror = (err) => reject(err);
     });
+
+  // ---- Navegação entre etapas ----
+  const avancarDados = () => {
+    if (!isEmailValido(email)) {
+      setError('Informe um e-mail válido — é por ele que você recebe o presente pronto.');
+      return;
+    }
+    if (!nomePai.trim()) {
+      setError('Informe o nome do seu pai.');
+      return;
+    }
+    setError(null);
+    setEtapa('perguntas');
   };
 
-  // Submit Handler
+  const proximaPergunta = () => {
+    setError(null);
+    if (perguntaIdx < PERGUNTAS_GUIADAS.length - 1) {
+      setPerguntaIdx(perguntaIdx + 1);
+    } else {
+      setEtapa('fechamento');
+    }
+  };
+
+  const avancarFechamento = () => {
+    if (!conteudoOk) {
+      setError(
+        `Responda pelo menos ${MIN_BLOCOS} perguntas (volte com "Anterior") ou escreva uma linha de fechamento.`
+      );
+      return;
+    }
+    setError(null);
+    setEtapa('fotos');
+  };
+
+  // ---- Envio ----
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nomePai.trim()) {
-      setError('Por favor, informe o nome do seu pai.');
+    if (fotos.length === 0) {
+      setError('Adicione pelo menos uma foto.');
       return;
     }
-    if (!mensagem.trim()) {
-      setError('Por favor, escreva uma mensagem especial.');
-      return;
-    }
-    if (photos.length === 0) {
-      setError('Por favor, adicione pelo menos uma foto.');
+    if (!aceitouTermos) {
+      setError('É necessário aceitar os termos de uso para continuar.');
       return;
     }
 
     setLoading(true);
     setError(null);
 
-    const configured = isSupabaseConfigured();
+    const revelarEm = revelarModo === 'diadospais' ? DATA_REVELACAO_PADRAO : null;
 
     try {
-      if (!configured) {
-        console.log('Supabase not configured. Running in simulation mode...');
-
-        // Convert photos to base64 to store in localStorage for simulation preview
-        const base64Photos = await Promise.all(
-          photos.map(p => fileToBase64(p.file))
-        );
-
+      if (!isSupabaseConfigured()) {
+        // Modo de simulação local (apenas desenvolvimento)
+        console.log('Supabase não configurado. Rodando em modo de simulação...');
+        const base64Fotos = await Promise.all(fotos.map((f) => fileToBase64(f.file)));
         const mockId = crypto.randomUUID();
-        const mockDraft = {
+        await saveDraftToIndexedDB(mockId, {
           id: mockId,
-          nome_destinatario: nomePai,
-          mensagem: mensagem,
-          midias: base64Photos,
+          email_comprador: email.trim(),
+          nome_destinatario: nomePai.trim(),
+          mensagem: mensagem.trim() || null,
+          blocos: blocosPreenchidos.length > 0 ? blocosPreenchidos : null,
+          midias: base64Fotos.map((url, i) => ({
+            url,
+            legenda: fotos[i].legenda.trim() || undefined,
+          })),
           tema,
           pago: false,
-          plano,
+          plano: 'basico',
+          revelar_em: revelarEm,
           criado_em: new Date().toISOString(),
-          isMock: true
-        };
-
-        // Save to IndexedDB (bypasses localStorage quota limits)
-        await saveDraftToIndexedDB(mockId, mockDraft);
-        
-        // Wait a second to simulate server delay
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-
+          isMock: true,
+        });
         router.push(`/preview/${mockId}`);
         return;
       }
 
-      // 1. Upload files directly to Supabase Storage
-      const uploadedUrls: string[] = [];
-      const pageId = crypto.randomUUID();
-
-      for (let i = 0; i < photos.length; i++) {
-        const photo = photos[i];
-        const fileExt = photo.file.name.split('.').pop() || 'jpg';
-        const fileName = `${crypto.randomUUID()}-${i}.${fileExt}`;
-        const filePath = `${pageId}/${fileName}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from('fotos')
-          .upload(filePath, photo.file, {
-            cacheControl: '3600',
-            upsert: false
-          });
-
-        if (uploadError) {
-          throw new Error(`Falha no upload da foto ${i + 1}: ${uploadError.message}`);
-        }
-
-        // Get public URL
-        const { data: publicUrlData } = supabase.storage
-          .from('fotos')
-          .getPublicUrl(filePath);
-
-        if (!publicUrlData.publicUrl) {
-          throw new Error('Falha ao obter URL pública para a imagem enviada.');
-        }
-
-        uploadedUrls.push(publicUrlData.publicUrl);
-      }
-
-      // 2. Insert record into `paginas` table in Supabase
-      const { error: dbError } = await supabase
-        .from('paginas')
-        .insert({
-          id: pageId,
-          nome_destinatario: nomePai,
-          mensagem: mensagem,
-          midias: uploadedUrls,
-          tema: tema,
-          pago: false, // Initial status is unpaid (draft)
-          plano: plano
+      // Criação via rota de servidor (service role — T0.2)
+      const formData = new FormData();
+      formData.append(
+        'payload',
+        JSON.stringify({
+          email_comprador: email.trim(),
+          nome_destinatario: nomePai.trim(),
+          mensagem: mensagem.trim() || undefined,
+          blocos: blocosPreenchidos,
+          tema,
+          revelar_em: revelarEm,
+          legendas: fotos.map((f) => f.legenda.trim()),
+          aceitou_termos: aceitouTermos,
         })
-        .select()
-        .single();
+      );
+      fotos.forEach((f, i) => formData.append(`foto_${i}`, f.file));
 
-      if (dbError) {
-        throw dbError;
+      const response = await fetch('/api/paginas', { method: 'POST', body: formData });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao salvar o presente.');
       }
 
-      router.push(`/preview/${pageId}`);
+      router.push(`/preview/${data.id}`);
     } catch (err: unknown) {
       console.error(err);
-      const msg = err instanceof Error ? err.message : 'Ocorreu um erro ao salvar o presente. Tente novamente.';
-      setError(msg);
+      setError(
+        err instanceof Error ? err.message : 'Ocorreu um erro ao salvar o presente. Tente novamente.'
+      );
     } finally {
       setLoading(false);
     }
   };
 
+  const pergunta = PERGUNTAS_GUIADAS[perguntaIdx];
+  const etapaNum = etapa === 'dados' ? 1 : etapa === 'perguntas' || etapa === 'fechamento' ? 2 : 3;
+
   return (
-    <main className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-rose-50 text-gray-800 py-12 px-4 sm:px-6 lg:px-8">
+    <main className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-rose-50 text-gray-800 py-10 px-4 sm:px-6 lg:px-8">
       <div className="max-w-xl mx-auto">
-        {/* Header */}
+        {/* Cabeçalho */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-100 text-rose-600 text-sm font-semibold mb-3">
             <Heart className="w-4 h-4 fill-current" />
@@ -231,48 +278,86 @@ export default function CriarPresente() {
             Crie um Recado Surpresa
           </h1>
           <p className="mt-2 text-base text-gray-600">
-            Monte uma página personalizada e emocionante para o seu pai, gerando um cartão com QR Code exclusivo.
+            Você não precisa &quot;escrever bonito&quot;. A gente pergunta, você responde — e o
+            presente toma forma sozinho.
           </p>
         </div>
 
-        {/* Step Indicator */}
-        <div className="flex justify-between items-center mb-8 px-4">
-          <div className="flex items-center gap-2">
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-colors ${step >= 1 ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-500'}`}>1</div>
-            <span className="text-xs font-semibold text-gray-500 hidden sm:inline">Conteúdo</span>
-          </div>
-          <div className="h-0.5 flex-1 bg-gray-200 mx-2">
-            <div className={`h-full bg-indigo-600 transition-all duration-300`} style={{ width: step > 1 ? '100%' : '0%' }}></div>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-colors ${step >= 2 ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-500'}`}>2</div>
-            <span className="text-xs font-semibold text-gray-500 hidden sm:inline">Design & Plano</span>
-          </div>
+        {/* Indicador de etapas */}
+        <div className="flex justify-between items-center mb-8 px-2">
+          {[
+            { n: 1, label: 'Você' },
+            { n: 2, label: 'As perguntas' },
+            { n: 3, label: 'Fotos e visual' },
+          ].map((s, i) => (
+            <React.Fragment key={s.n}>
+              {i > 0 && (
+                <div className="h-0.5 flex-1 bg-gray-200 mx-2">
+                  <div
+                    className="h-full bg-indigo-600 transition-all duration-300"
+                    style={{ width: etapaNum >= s.n ? '100%' : '0%' }}
+                  ></div>
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <div
+                  className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-colors ${
+                    etapaNum >= s.n ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-500'
+                  }`}
+                >
+                  {s.n}
+                </div>
+                <span className="text-xs font-semibold text-gray-500 hidden sm:inline">
+                  {s.label}
+                </span>
+              </div>
+            </React.Fragment>
+          ))}
         </div>
 
-        {/* Form Box */}
+        {/* Caixa do formulário */}
         <div className="bg-white/90 backdrop-blur-md rounded-2xl shadow-xl border border-gray-100 p-6 sm:p-8">
           {!isSupabaseConfigured() && (
             <div className="mb-6 p-4 rounded-xl bg-amber-50 border border-amber-200 flex items-start gap-3 text-amber-800 text-sm">
               <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5 text-amber-600" />
               <div>
                 <span className="font-semibold block mb-0.5">Modo de Simulação Ativo</span>
-                As credenciais do Supabase não foram configuradas. A página será salva temporariamente no navegador para permitir que você teste o fluxo por completo!
+                Credenciais do Supabase não configuradas. A página será salva no navegador para
+                você testar o fluxo completo.
               </div>
             </div>
           )}
 
           {error && (
-            <div className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-3 text-rose-800 text-sm animate-shake">
+            <div className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-3 text-rose-800 text-sm">
               <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5 text-rose-600" />
               <div>{error}</div>
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            {step === 1 && (
-              <div className="space-y-6 animate-fadeIn">
-                {/* Nome do Pai */}
+            {/* ===== ETAPA 1: e-mail (primeiro campo — T1.1) + nome ===== */}
+            {etapa === 'dados' && (
+              <div className="space-y-6">
+                <div>
+                  <label htmlFor="email" className="block text-sm font-semibold text-gray-700 mb-1">
+                    Seu e-mail *
+                  </label>
+                  <input
+                    type="email"
+                    id="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="voce@email.com"
+                    autoComplete="email"
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all placeholder:text-gray-400 bg-gray-50/50 hover:bg-gray-50 focus:bg-white"
+                    required
+                  />
+                  <p className="text-xs text-gray-400 mt-1.5">
+                    É por aqui que você recebe o link e o QR code do presente. Nada de spam.
+                  </p>
+                </div>
+
                 <div>
                   <label htmlFor="nomePai" className="block text-sm font-semibold text-gray-700 mb-1">
                     Nome do seu pai *
@@ -283,83 +368,220 @@ export default function CriarPresente() {
                     value={nomePai}
                     onChange={(e) => setNomePai(e.target.value)}
                     placeholder="Ex: Carlos, Pai, Coroa..."
+                    maxLength={80}
                     className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all placeholder:text-gray-400 bg-gray-50/50 hover:bg-gray-50 focus:bg-white"
                     required
                   />
                 </div>
 
-                {/* Mensagem */}
-                <div>
-                  <label htmlFor="mensagem" className="block text-sm font-semibold text-gray-700 mb-1">
-                    Mensagem de afeto *
-                  </label>
-                  <div className="relative">
-                    <textarea
-                      id="mensagem"
-                      value={mensagem}
-                      onChange={(e) => setMensagem(e.target.value)}
-                      placeholder="Escreva tudo o que ele significa para você..."
-                      rows={5}
-                      maxLength={1000}
-                      className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all placeholder:text-gray-400 bg-gray-50/50 hover:bg-gray-50 focus:bg-white resize-none"
-                      required
-                    />
-                    <div className="absolute bottom-3 right-3 text-xs text-gray-400">
-                      {mensagem.length}/1000
-                    </div>
+                <button
+                  type="button"
+                  onClick={avancarDados}
+                  className="w-full py-4 px-6 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold transition-all shadow-md shadow-indigo-100 hover:shadow-lg flex items-center justify-center gap-2 group"
+                >
+                  <span>Começar</span>
+                  <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                </button>
+              </div>
+            )}
+
+            {/* ===== ETAPA 2: perguntas guiadas, uma por vez (T1.2) ===== */}
+            {etapa === 'perguntas' && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-indigo-500">
+                    Pergunta {perguntaIdx + 1} de {PERGUNTAS_GUIADAS.length}
+                  </span>
+                  <div className="flex gap-1.5">
+                    {PERGUNTAS_GUIADAS.map((p, i) => (
+                      <div
+                        key={p.id}
+                        className={`w-2 h-2 rounded-full transition-colors ${
+                          respostas[p.id]?.trim()
+                            ? 'bg-emerald-500'
+                            : i === perguntaIdx
+                              ? 'bg-indigo-600'
+                              : 'bg-gray-200'
+                        }`}
+                      ></div>
+                    ))}
                   </div>
                 </div>
 
-                {/* Photo Upload Area */}
+                <h2 className="text-xl sm:text-2xl font-bold text-gray-900 leading-snug">
+                  {pergunta.pergunta}
+                </h2>
+
+                <div className="relative">
+                  <textarea
+                    value={respostas[pergunta.id] || ''}
+                    onChange={(e) =>
+                      setRespostas((prev) => ({ ...prev, [pergunta.id]: e.target.value }))
+                    }
+                    placeholder={pergunta.placeholder}
+                    rows={4}
+                    maxLength={1500}
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all placeholder:text-gray-400 bg-gray-50/50 hover:bg-gray-50 focus:bg-white resize-none"
+                  />
+                  <p className="text-xs text-gray-400 mt-1.5">
+                    Sua resposta vira o bloco <strong>&quot;{pergunta.titulo}&quot;</strong> na
+                    página. Escreva do seu jeito — sem pergunta aparecendo, só a resposta.
+                  </p>
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setError(null);
+                      if (perguntaIdx > 0) setPerguntaIdx(perguntaIdx - 1);
+                      else setEtapa('dados');
+                    }}
+                    className="py-3.5 px-5 rounded-xl border border-gray-200 hover:bg-gray-50 text-gray-700 font-semibold transition-all flex items-center gap-1.5"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    <span>Anterior</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={proximaPergunta}
+                    className="flex-1 py-3.5 rounded-xl border border-gray-200 hover:bg-gray-50 text-gray-500 font-semibold transition-all text-sm"
+                  >
+                    Pular esta
+                  </button>
+                  <button
+                    type="button"
+                    onClick={proximaPergunta}
+                    disabled={!respostas[pergunta.id]?.trim()}
+                    className="flex-1 py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold transition-all shadow-md shadow-indigo-100 flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <span>Próxima</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* ===== ETAPA 2b: fechamento livre (opcional) ===== */}
+            {etapa === 'fechamento' && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-xl sm:text-2xl font-bold text-gray-900 leading-snug">
+                    Se quiser, feche do seu jeito — uma linha basta.
+                  </h2>
+                  <p className="text-sm text-gray-500 mt-2">
+                    {blocosPreenchidos.length > 0
+                      ? `Você respondeu ${blocosPreenchidos.length} ${blocosPreenchidos.length === 1 ? 'pergunta' : 'perguntas'}. Este fechamento é opcional.`
+                      : 'Você pulou todas as perguntas — então escreva aqui a sua mensagem.'}
+                  </p>
+                </div>
+
+                <textarea
+                  value={mensagem}
+                  onChange={(e) => setMensagem(e.target.value)}
+                  placeholder="Te amo, coroa."
+                  rows={3}
+                  maxLength={1500}
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all placeholder:text-gray-400 bg-gray-50/50 hover:bg-gray-50 focus:bg-white resize-none"
+                />
+
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setError(null);
+                      setEtapa('perguntas');
+                    }}
+                    className="py-3.5 px-5 rounded-xl border border-gray-200 hover:bg-gray-50 text-gray-700 font-semibold transition-all flex items-center gap-1.5"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    <span>Anterior</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={avancarFechamento}
+                    className="flex-1 py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold transition-all shadow-md shadow-indigo-100 flex items-center justify-center gap-2"
+                  >
+                    <span>Continuar para as fotos</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* ===== ETAPA 3: fotos + legendas + tema + revelação + termos ===== */}
+            {etapa === 'fotos' && (
+              <div className="space-y-8">
+                {/* Upload de fotos */}
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">
-                    Fotos de recordação * (máx. 5 fotos)
+                    Fotos de vocês * (máx. 5)
                   </label>
-                  
-                  {/* Custom Dropzone */}
                   <div
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={() => !comprimindo && fileInputRef.current?.click()}
                     className="border-2 border-dashed border-gray-200 hover:border-indigo-400 rounded-xl p-6 text-center cursor-pointer bg-gray-50/30 hover:bg-indigo-50/20 transition-all group"
                   >
                     <input
                       type="file"
                       ref={fileInputRef}
-                      onChange={handlePhotoUpload}
+                      onChange={handleFotoUpload}
                       multiple
                       accept="image/*"
                       className="hidden"
                     />
                     <div className="flex flex-col items-center">
                       <div className="w-12 h-12 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                        <Upload className="w-6 h-6" />
+                        {comprimindo ? (
+                          <Loader2 className="w-6 h-6 animate-spin" />
+                        ) : (
+                          <Upload className="w-6 h-6" />
+                        )}
                       </div>
                       <p className="text-sm font-medium text-gray-700">
-                        Clique para enviar ou arraste suas fotos
+                        {comprimindo ? 'Otimizando fotos...' : 'Toque para enviar suas fotos'}
                       </p>
                       <p className="text-xs text-gray-400 mt-1">
-                        PNG, JPG ou WEBP de até 5MB cada
+                        A gente comprime automaticamente — pode mandar direto da galeria.
                       </p>
                     </div>
                   </div>
 
-                  {/* Thumbnail Previews */}
-                  {photos.length > 0 && (
-                    <div className="grid grid-cols-5 gap-3 mt-4">
-                      {photos.map((photo, index) => (
-                        <div key={index} className="relative aspect-square rounded-lg overflow-hidden border border-gray-150 group">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={photo.previewUrl}
-                            alt={`Preview ${index + 1}`}
-                            className="w-full h-full object-cover"
-                          />
+                  {/* Miniaturas com legenda por foto (T1.2) */}
+                  {fotos.length > 0 && (
+                    <div className="space-y-3 mt-4">
+                      {fotos.map((foto, index) => (
+                        <div
+                          key={foto.previewUrl}
+                          className="flex items-start gap-3 p-3 rounded-xl border border-gray-100 bg-gray-50/50"
+                        >
+                          <div className="relative w-16 h-16 rounded-lg overflow-hidden border border-gray-150 flex-shrink-0">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={foto.previewUrl}
+                              alt={`Foto ${index + 1}`}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <input
+                              type="text"
+                              value={foto.legenda}
+                              onChange={(e) => atualizarLegenda(index, e.target.value)}
+                              placeholder="Legenda (opcional): onde foi? o que estava acontecendo?"
+                              maxLength={140}
+                              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none bg-white placeholder:text-gray-400"
+                            />
+                            <p className="text-[10px] text-gray-400 mt-1">
+                              Uma legenda específica vale mais que a foto sozinha.
+                            </p>
+                          </div>
                           <button
                             type="button"
-                            onClick={() => removePhoto(index)}
-                            className="absolute inset-0 bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={() => removerFoto(index)}
+                            className="p-2 text-gray-400 hover:text-rose-500 transition-colors flex-shrink-0"
                             title="Remover foto"
                           >
-                            <Trash2 className="w-5 h-5 text-rose-400" />
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       ))}
@@ -367,159 +589,137 @@ export default function CriarPresente() {
                   )}
                 </div>
 
-                {/* Next Step Button */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!nomePai.trim() || !mensagem.trim() || photos.length === 0) {
-                      setError('Preencha o nome do pai, a mensagem e adicione fotos antes de prosseguir.');
-                      return;
-                    }
-                    setError(null);
-                    setStep(2);
-                  }}
-                  className="w-full py-4 px-6 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold transition-all shadow-md shadow-indigo-100 hover:shadow-lg flex items-center justify-center gap-2 group"
-                >
-                  <span>Continuar para Visual & Plano</span>
-                  <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                </button>
-              </div>
-            )}
-
-            {step === 2 && (
-              <div className="space-y-8 animate-fadeIn">
-                {/* Seleção de Tema */}
+                {/* Tema com preview ao vivo (T1.3) */}
                 <div>
-                  <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                    <Palette className="w-4 h-4 text-indigo-600" />
-                    <span>Escolha o Estilo Visual (Tema)</span>
-                  </h3>
-                  
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Estilo visual</h3>
                   <div className="grid grid-cols-2 gap-4">
-                    {/* Clássico */}
-                    <div
-                      onClick={() => setTema('classico')}
-                      className={`cursor-pointer rounded-xl p-4 border-2 transition-all flex flex-col justify-between ${
-                        tema === 'classico'
-                          ? 'border-indigo-600 bg-indigo-50/20'
-                          : 'border-gray-200 hover:border-gray-300 bg-white'
-                      }`}
-                    >
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-sm font-bold text-gray-900">Clássico Elegant</span>
-                        {tema === 'classico' && <Check className="w-4 h-4 text-indigo-600" />}
+                    {TEMAS.map((t) => (
+                      <div
+                        key={t.id}
+                        onClick={() => setTema(t.id)}
+                        className={`cursor-pointer rounded-xl p-4 border-2 transition-all ${
+                          tema === t.id
+                            ? 'border-indigo-600 bg-indigo-50/20'
+                            : 'border-gray-200 hover:border-gray-300 bg-white'
+                        }`}
+                      >
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-sm font-bold text-gray-900">{t.nome}</span>
+                          {tema === t.id && <Check className="w-4 h-4 text-indigo-600" />}
+                        </div>
+                        <p className="text-xs text-gray-500 leading-normal">{t.descricao}</p>
+                        <div className="mt-3 h-1.5 w-full bg-gray-100 rounded-full overflow-hidden flex gap-1">
+                          {t.id === 'classico' ? (
+                            <>
+                              <div className="h-full w-1/3 bg-stone-800"></div>
+                              <div className="h-full w-1/3 bg-stone-300"></div>
+                              <div className="h-full w-1/3 bg-amber-100"></div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="h-full w-1/3 bg-emerald-500"></div>
+                              <div className="h-full w-1/3 bg-teal-400"></div>
+                              <div className="h-full w-1/3 bg-amber-300"></div>
+                            </>
+                          )}
+                        </div>
                       </div>
-                      <p className="text-xs text-gray-500 leading-normal">
-                        Tipografia elegante (serifa), cores sóbrias e transições suaves. Ideal para pais tradicionais.
-                      </p>
-                      <div className="mt-3 h-1.5 w-full bg-gray-100 rounded-full overflow-hidden flex gap-1">
-                        <div className="h-full w-1/3 bg-slate-800"></div>
-                        <div className="h-full w-1/3 bg-stone-300"></div>
-                        <div className="h-full w-1/3 bg-amber-100"></div>
-                      </div>
-                    </div>
-
-                    {/* Divertido */}
-                    <div
-                      onClick={() => setTema('divertido')}
-                      className={`cursor-pointer rounded-xl p-4 border-2 transition-all flex flex-col justify-between ${
-                        tema === 'divertido'
-                          ? 'border-indigo-600 bg-indigo-50/20'
-                          : 'border-gray-200 hover:border-gray-300 bg-white'
-                      }`}
-                    >
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-sm font-bold text-gray-900">Descontraído</span>
-                        {tema === 'divertido' && <Check className="w-4 h-4 text-indigo-600" />}
-                      </div>
-                      <p className="text-xs text-gray-500 leading-normal">
-                        Cores vibrantes, ícones dinâmicos e design descolado. Perfeito para pais modernos.
-                      </p>
-                      <div className="mt-3 h-1.5 w-full bg-gray-100 rounded-full overflow-hidden flex gap-1">
-                        <div className="h-full w-1/3 bg-emerald-500"></div>
-                        <div className="h-full w-1/3 bg-yellow-400"></div>
-                        <div className="h-full w-1/3 bg-sky-400"></div>
-                      </div>
-                    </div>
+                    ))}
                   </div>
                 </div>
 
-                {/* Seleção de Plano */}
+                {/* Revelação agendada (T2.1) */}
                 <div>
-                  <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-amber-500" />
-                    <span>Selecione o Plano</span>
-                  </h3>
-                  
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Quando revelar?</h3>
                   <div className="space-y-3">
-                    {/* Básico */}
                     <div
-                      onClick={() => setPlano('basico')}
-                      className={`cursor-pointer rounded-xl p-4 border-2 transition-all flex items-center justify-between ${
-                        plano === 'basico'
+                      onClick={() => setRevelarModo('diadospais')}
+                      className={`cursor-pointer rounded-xl p-4 border-2 transition-all flex items-center gap-3 ${
+                        revelarModo === 'diadospais'
                           ? 'border-indigo-600 bg-indigo-50/20'
                           : 'border-gray-200 hover:border-gray-300 bg-white'
                       }`}
                     >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${plano === 'basico' ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-gray-300'}`}>
-                          {plano === 'basico' && <Check className="w-3 h-3" />}
-                        </div>
-                        <div>
-                          <span className="font-bold text-gray-900 text-sm sm:text-base">Plano Básico</span>
-                          <span className="text-xs text-gray-500 block">Mensagem + Fotos + QR Code para imprimir</span>
-                        </div>
+                      <CalendarHeart
+                        className={`w-5 h-5 flex-shrink-0 ${revelarModo === 'diadospais' ? 'text-indigo-600' : 'text-gray-400'}`}
+                      />
+                      <div className="flex-1">
+                        <span className="font-bold text-gray-900 text-sm block">
+                          No Dia dos Pais (09/08)
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          Antes disso, quem abrir vê uma contagem regressiva — a surpresa é de
+                          verdade. Pode entregar o QR code sem medo.
+                        </span>
                       </div>
-                      <div className="text-right">
-                        <span className="text-lg font-extrabold text-gray-950">R$ 9,90</span>
-                        <span className="text-xxs text-gray-400 block font-medium">pagamento único</span>
-                      </div>
+                      {revelarModo === 'diadospais' && (
+                        <Check className="w-4 h-4 text-indigo-600 flex-shrink-0" />
+                      )}
                     </div>
 
-                    {/* Completo */}
                     <div
-                      onClick={() => setPlano('completo')}
-                      className={`cursor-pointer rounded-xl p-4 border-2 transition-all flex items-center justify-between ${
-                        plano === 'completo'
+                      onClick={() => setRevelarModo('agora')}
+                      className={`cursor-pointer rounded-xl p-4 border-2 transition-all flex items-center gap-3 ${
+                        revelarModo === 'agora'
                           ? 'border-indigo-600 bg-indigo-50/20'
                           : 'border-gray-200 hover:border-gray-300 bg-white'
                       }`}
                     >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${plano === 'completo' ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-gray-300'}`}>
-                          {plano === 'completo' && <Check className="w-3 h-3" />}
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-bold text-gray-900 text-sm sm:text-base">Plano Completo</span>
-                            <span className="bg-amber-100 text-amber-700 text-xxs font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider">Premium</span>
-                          </div>
-                          <span className="text-xs text-gray-500 block">Tudo do Básico + Envio por e-mail + Alta Resolução</span>
-                        </div>
+                      <Zap
+                        className={`w-5 h-5 flex-shrink-0 ${revelarModo === 'agora' ? 'text-indigo-600' : 'text-gray-400'}`}
+                      />
+                      <div className="flex-1">
+                        <span className="font-bold text-gray-900 text-sm block">
+                          Revelar imediatamente
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          A página abre completa assim que ele escanear.
+                        </span>
                       </div>
-                      <div className="text-right">
-                        <span className="text-lg font-extrabold text-gray-950">R$ 14,90</span>
-                        <span className="text-xxs text-gray-400 block font-medium">pagamento único</span>
-                      </div>
+                      {revelarModo === 'agora' && (
+                        <Check className="w-4 h-4 text-indigo-600 flex-shrink-0" />
+                      )}
                     </div>
                   </div>
                 </div>
 
-                {/* Back and Submit Actions */}
-                <div className="flex gap-4">
+                {/* Termos (T3.1) */}
+                <label className="flex items-start gap-3 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={aceitouTermos}
+                    onChange={(e) => setAceitouTermos(e.target.checked)}
+                    className="mt-1 w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span className="text-xs text-gray-500 leading-relaxed">
+                    Li e aceito os{' '}
+                    <Link href="/termos" target="_blank" className="text-indigo-600 underline">
+                      termos de uso
+                    </Link>{' '}
+                    e a{' '}
+                    <Link href="/privacidade" target="_blank" className="text-indigo-600 underline">
+                      política de privacidade
+                    </Link>
+                    . Confirmo que tenho autorização das pessoas que aparecem nas fotos.
+                  </span>
+                </label>
+
+                {/* Ações */}
+                <div className="flex gap-3">
                   <button
                     type="button"
                     onClick={() => {
                       setError(null);
-                      setStep(1);
+                      setEtapa('fechamento');
                     }}
-                    className="flex-1 py-4 rounded-xl border border-gray-200 hover:bg-gray-50 text-gray-700 font-semibold transition-all"
+                    className="py-4 px-5 rounded-xl border border-gray-200 hover:bg-gray-50 text-gray-700 font-semibold transition-all flex items-center gap-1.5"
                   >
-                    Voltar
+                    <ArrowLeft className="w-4 h-4" />
+                    <span className="hidden sm:inline">Voltar</span>
                   </button>
                   <button
                     type="submit"
-                    disabled={loading}
+                    disabled={loading || comprimindo}
                     className="flex-1 py-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold transition-all shadow-md shadow-indigo-100 hover:shadow-lg flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {loading ? (
@@ -529,16 +729,59 @@ export default function CriarPresente() {
                       </>
                     ) : (
                       <>
-                        <span>Gerar Prévia</span>
-                        <Sparkles className="w-5 h-5 fill-current" />
+                        <span>Ver a prévia completa</span>
+                        <ArrowRight className="w-5 h-5" />
                       </>
                     )}
                   </button>
                 </div>
+                <p className="text-center text-xs text-gray-400">
+                  Você só paga ({PRECO_UNICO_FORMATADO}) depois de ver a prévia pronta.
+                </p>
               </div>
             )}
           </form>
         </div>
+
+        {/* Botão flutuante "ver como ficou" (preview ao vivo — T1.3) */}
+        {etapa !== 'dados' && (nomePai.trim() || blocosPreenchidos.length > 0) && (
+          <button
+            type="button"
+            onClick={() => setMostrarPreview(true)}
+            className="fixed bottom-5 right-5 z-40 flex items-center gap-2 px-4 py-3 rounded-full bg-gray-900 hover:bg-gray-800 text-white text-sm font-bold shadow-xl transition-all hover:scale-105"
+          >
+            <Eye className="w-4 h-4" />
+            <span>Ver como ficou</span>
+          </button>
+        )}
+
+        {/* Overlay do preview ao vivo */}
+        {mostrarPreview && (
+          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm overflow-y-auto">
+            <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 bg-gray-950/90 text-white">
+              <span className="text-sm font-bold">Prévia ao vivo — assim ele vai ver</span>
+              <button
+                type="button"
+                onClick={() => setMostrarPreview(false)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-sm font-semibold transition-colors"
+              >
+                <X className="w-4 h-4" />
+                <span>Fechar</span>
+              </button>
+            </div>
+            <div className="max-w-xl mx-auto px-4 py-8">
+              <PageRenderer
+                conteudo={{
+                  nome_destinatario: nomePai.trim() || 'Seu pai',
+                  mensagem: mensagem.trim() || null,
+                  blocos: blocosPreenchidos,
+                  midias: midiasPreview,
+                  tema,
+                }}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </main>
   );
