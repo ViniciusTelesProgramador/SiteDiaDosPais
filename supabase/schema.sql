@@ -44,6 +44,8 @@ create table if not exists public.paginas (
   reacao_em timestamptz,
   -- lembrete pré-revelação (T2.8)
   lembrete_enviado_em timestamptz,
+  -- trilha do YouTube (Fase 6): só o ID de 11 caracteres, nunca a URL crua
+  musica_youtube_id text,
   criado_em timestamptz not null default now()
 );
 
@@ -95,6 +97,7 @@ alter table public.paginas add column if not exists reacao_texto text;
 alter table public.paginas add column if not exists reacao_em timestamptz;
 alter table public.paginas add column if not exists lembrete_enviado_em timestamptz;
 alter table public.pagamentos add column if not exists criado_em timestamptz not null default now();
+alter table public.paginas add column if not exists musica_youtube_id text;
 
 -- mensagem passa a ser opcional (blocos podem substituí-la)
 alter table public.paginas alter column mensagem drop not null;

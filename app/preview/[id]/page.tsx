@@ -435,6 +435,19 @@ export default function PreviewPagina() {
       escreverParagrafo(`“${draft.reacao_texto!.trim()}”`, 13, 'italic');
     }
 
+    // Música (Fase 6), se houver
+    if (draft.musica_youtube_id) {
+      garantirEspaco(12);
+      y += 6;
+      doc.setTextColor(140, 122, 92);
+      doc.setFontSize(9);
+      doc.setFont('Times', 'italic');
+      doc.text(`A música de vocês: youtu.be/${draft.musica_youtube_id}`, 105, y, {
+        align: 'center',
+      });
+      y += 8;
+    }
+
     // Rodapé da última página
     garantirEspaco(20);
     y += 12;
@@ -754,6 +767,7 @@ export default function PreviewPagina() {
             blocos: draft.blocos,
             midias: normalizarMidias(draft.midias),
             tema: normalizarTema(draft.tema),
+            musicaYoutubeId: draft.musica_youtube_id,
           }}
         />
       </main>

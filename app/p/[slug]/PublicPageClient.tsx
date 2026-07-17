@@ -37,6 +37,8 @@ export interface DadosPublicos {
   isMock?: boolean;
   /** Mensagens aprovadas de outras pessoas (Fase 5 — Surpresa Coletiva). */
   contribuicoes?: Contribuicao[];
+  /** ID do vídeo do YouTube (Fase 6) — null/undefined = sem música. */
+  musica_youtube_id?: string | null;
 }
 
 interface PublicPageClientProps {
@@ -87,6 +89,7 @@ export default function PublicPageClient({
             midias: foundDraft.midias,
             tema: foundDraft.tema,
             revelar_em: foundDraft.revelar_em,
+            musica_youtube_id: foundDraft.musica_youtube_id,
             isMock: true,
           });
         } else {
@@ -310,7 +313,6 @@ export default function PublicPageClient({
         }`}
       >
         <PageRenderer
-          cerimonia
           conteudo={{
             nome_destinatario: data.nome_destinatario,
             mensagem: data.mensagem,
@@ -318,6 +320,7 @@ export default function PublicPageClient({
             midias: normalizarMidias(data.midias),
             tema: normalizarTema(data.tema),
             contribuicoes: data.contribuicoes,
+            musicaYoutubeId: data.musica_youtube_id,
           }}
         />
 

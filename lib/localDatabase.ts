@@ -21,6 +21,7 @@ export interface PageDraft {
   revelar_em?: string | null;
   reacao_emoji?: string | null;
   reacao_texto?: string | null;
+  musica_youtube_id?: string | null;
   isMock?: boolean;
   criado_em?: string;
 }

@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { saveDraftToIndexedDB } from '@/lib/localDatabase';
 import { comprimirFoto } from '@/lib/imagem';
-import { isEmailValido } from '@/lib/utils';
+import { isEmailValido, extrairYoutubeId } from '@/lib/utils';
 import { track } from '@/lib/analytics';
 import {
   PERGUNTAS_GUIADAS,
@@ -54,6 +54,7 @@ export default function CriarPresente() {
   const [fotos, setFotos] = useState<FotoForm[]>([]);
   const [tema, setTema] = useState<TemaId>('classico');
   const [revelarModo, setRevelarModo] = useState<'diadospais' | 'agora'>('diadospais');
+  const [musicaUrl, setMusicaUrl] = useState('');
   const [aceitouTermos, setAceitouTermos] = useState(false);
 
   // ---- Estado de UI ----
@@ -81,6 +82,8 @@ export default function CriarPresente() {
     url: f.previewUrl,
     legenda: f.legenda.trim() || undefined,
   }));
+
+  const musicaYoutubeId = musicaUrl.trim() ? extrairYoutubeId(musicaUrl) : null;
 
   // ---- Fotos (com compressão — RF09/T2.2) ----
   const handleFotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -221,6 +224,7 @@ export default function CriarPresente() {
           pago: false,
           plano: 'basico',
           revelar_em: revelarEm,
+          musica_youtube_id: musicaYoutubeId,
           criado_em: new Date().toISOString(),
           isMock: true,
         });
@@ -241,6 +245,7 @@ export default function CriarPresente() {
           revelar_em: revelarEm,
           legendas: fotos.map((f) => f.legenda.trim()),
           aceitou_termos: aceitouTermos,
+          musica_youtube_url: musicaUrl.trim() || undefined,
         })
       );
       fotos.forEach((f, i) => formData.append(`foto_${i}`, f.file));
@@ -686,6 +691,31 @@ export default function CriarPresente() {
                   </div>
                 </div>
 
+                {/* Música do YouTube (Fase 6, opcional) */}
+                <div>
+                  <label htmlFor="musica" className="block text-sm font-semibold text-gray-700 mb-1">
+                    Uma música que é a cara de vocês (opcional)
+                  </label>
+                  <input
+                    type="url"
+                    id="musica"
+                    value={musicaUrl}
+                    onChange={(e) => setMusicaUrl(e.target.value)}
+                    placeholder="Cole aqui o link de um vídeo do YouTube"
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all placeholder:text-gray-400 bg-gray-50/50 hover:bg-gray-50 focus:bg-white"
+                  />
+                  {musicaUrl.trim() && !musicaYoutubeId && (
+                    <p className="text-xs text-amber-600 mt-1.5">
+                      Não reconheci esse link do YouTube — confira se copiou certinho.
+                    </p>
+                  )}
+                  {musicaYoutubeId && (
+                    <p className="text-xs text-emerald-600 mt-1.5">
+                      Música reconhecida — vai aparecer com um botão de tocar na página.
+                    </p>
+                  )}
+                </div>
+
                 {/* Termos (T3.1) */}
                 <label className="flex items-start gap-3 cursor-pointer select-none">
                   <input
@@ -780,6 +810,7 @@ export default function CriarPresente() {
                   blocos: blocosPreenchidos,
                   midias: midiasPreview,
                   tema,
+                  musicaYoutubeId,
                 }}
               />
             </div>

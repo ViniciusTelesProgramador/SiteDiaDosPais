@@ -18,3 +18,15 @@ export function generateShortSlug(length = 10): string {
 export function isEmailValido(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
 }
+
+/**
+ * Extrai o ID de 11 caracteres de um link do YouTube (watch?v=, youtu.be/,
+ * embed/), ignorando parâmetros extras (&t=, &list=...). Retorna null se o
+ * link não for reconhecido (Fase 6 — trilha do YouTube).
+ */
+export function extrairYoutubeId(url: string): string | null {
+  const match = url
+    .trim()
+    .match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+  return match ? match[1] : null;
+}

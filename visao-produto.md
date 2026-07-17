@@ -125,3 +125,4 @@ Estado da integração (13/07/2026):
 | Trilha sonora sutil | Dobrada dentro da cerimônia (T2.1): som só via gesto de abertura, opcional; sem asset excelente, silêncio |
 | Áudio do comprador, IA de apoio à escrita, playlist, vídeo | v2 — registrados no "Fora do MVP" da especificação |
 | Convidar a família a contribuir (amplia o gatilho 1 — mais gente investe esforço próprio) | Plano **Fase 5 — Surpresa Coletiva** (16/07/2026): link pós-pagamento, mensagens curtas moderadas pelo comprador, exibidas logo após o clímax |
+| Revelação sequencial "camada elaborada" (seção 5) + playlist com significado (seção 4) | Plano **Fase 6 — Modo Storytime + Trilha do YouTube** (16/07/2026): um momento por vez (toque/swipe, sem timer automático) e música do YouTube com botão de tocar/pausar visível, sem autoplay |

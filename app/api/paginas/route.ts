@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabaseAdmin';
-import { isEmailValido } from '@/lib/utils';
+import { isEmailValido, extrairYoutubeId } from '@/lib/utils';
 import { MIN_BLOCOS, PERGUNTAS_GUIADAS } from '@/lib/config';
 import type { Bloco, Midia } from '@/lib/types';
 
@@ -18,6 +18,7 @@ interface PayloadCriacao {
   revelar_em?: string | null;
   legendas?: string[];
   aceitou_termos?: boolean;
+  musica_youtube_url?: string;
 }
 
 /**
@@ -117,6 +118,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const musicaYoutubeId = payload.musica_youtube_url
+      ? extrairYoutubeId(payload.musica_youtube_url)
+      : null;
+
     const legendas = Array.isArray(payload.legendas) ? payload.legendas : [];
     const pageId = crypto.randomUUID();
 
@@ -165,6 +170,7 @@ export async function POST(req: NextRequest) {
       plano: 'basico',
       revelar_em: revelarEm,
       expira_em: expiraEm.toISOString(),
+      musica_youtube_id: musicaYoutubeId,
     });
 
     if (dbError) {

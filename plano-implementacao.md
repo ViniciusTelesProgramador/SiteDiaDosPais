@@ -337,6 +337,54 @@ Tudo aqui é pré-requisito das fases seguintes. Nenhuma rota nova deve ser expo
 
 ---
 
+## Fase 6 — Modo Storytime + Trilha do YouTube (aprovada em 16/07/2026)
+
+> Origem: ao ver a prévia real (com dados de teste), o Pedro achou o
+> entregável ainda fraco — mesmo com Fase 4 e Fase 5, a página era "só" um
+> scroll comprido. Duas mudanças: a página vira uma sequência de momentos em
+> tela cheia (storytime), navegada por toque/swipe/seta — sem avanço
+> automático; e o comprador pode colar um link do YouTube com uma música que
+> "é a cara dos dois", tocada por um botão visível (sem autoplay).
+
+### T6.1–T6.2 🔴 Dados e utilitário
+- **Arquivos:** `lib/utils.ts` (`extrairYoutubeId`), `supabase/schema.sql`
+  (`paginas.musica_youtube_id`), `lib/types.ts`, `lib/localDatabase.ts`.
+- Só o ID de 11 caracteres é armazenado, nunca a URL crua.
+
+### T6.3 🔴 Formulário e APIs
+- **Arquivos:** `app/criar/page.tsx` (campo opcional na etapa de fotos,
+  validação leve não-bloqueante), `app/api/paginas/route.ts` (extrai e
+  grava), `app/api/paginas/[id]/route.ts` (inclui no select).
+
+### T6.4 🔴 Player
+- **Arquivos:** `lib/youtubePlayer.ts` (loader singleton da IFrame API),
+  `components/MusicPlayer.tsx` (player visível ~44px com overlay de
+  tocar/pausar; `playVideo()` sempre dentro do próprio clique do usuário —
+  sem depender de autoplay).
+
+### T6.5 🔴 `PageRenderer`: reescrita para modo storytime
+- **Arquivo:** `components/PageRenderer.tsx`. Troca o scroll contínuo com
+  fade por `IntersectionObserver` (`Reveal`, removido) por uma lista de
+  slides — um por vez, com dots de progresso, setas e swipe. Ordem: abertura
+  → uma foto por slide → aprofundamento → clímax → coro (Fase 5, um slide
+  só) → fechamento. Prop `cerimonia` removida (deixou de fazer sentido sem
+  scroll).
+
+### T6.6 🔴 Consumidores
+- **Arquivos:** `app/p/[slug]/page.tsx` + `PublicPageClient.tsx`,
+  `app/preview/[id]/page.tsx`, `app/criar/page.tsx` — todos repassam
+  `musicaYoutubeId`; `cerimonia` removida das chamadas ao `PageRenderer`.
+
+### T6.7 🟡 Carta/Recordação
+- `downloadCartaPDF` ganha uma linha com o link da música, se houver.
+
+**Verificação real:** fluxo ponta a ponta dirigido por Playwright
+(formulário → prévia ao vivo) confirmou visualmente ordem narrativa correta,
+setas/dots funcionando, e o player carregando a capa do vídeo do YouTube com
+tocar/pausar funcional, sem erros de console.
+
+---
+
 ## Decisões que dependem do dono do produto (não são código)
 
 Estas travam tarefas se atrasarem — todas têm lead time externo (DNS, verificação de conta, etc.):

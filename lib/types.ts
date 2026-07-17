@@ -42,6 +42,7 @@ export interface Pagina {
   reacao_texto: string | null;
   reacao_em: string | null;
   lembrete_enviado_em: string | null;
+  musica_youtube_id: string | null;
   criado_em: string;
 }
 
