@@ -279,6 +279,64 @@ Tudo aqui é pré-requisito das fases seguintes. Nenhuma rota nova deve ser expo
 
 ---
 
+## Fase 5 — Surpresa Coletiva (aprovada em 16/07/2026)
+
+> Origem: o Pedro achou o entregável da Fase 4 pouco diferenciado — mesmo com
+> ordem narrativa, clímax e reação com texto, ainda é "uma página de uma
+> pessoa só". Esta fase muda a categoria do produto: depois de pagar, o
+> comprador convida 2–6 pessoas da família a deixarem uma mensagem curta, que
+> entra junto na página do pai. Extensão aditiva — o fluxo de hoje continua
+> idêntico para quem não usa o recurso.
+
+### T5.1 🔴 Schema + config
+- **Arquivos:** `supabase/schema.sql` (tabela `contribuicoes`, RLS habilitado
+  sem policies), `lib/config.ts` (`MAX_CONTRIBUICOES=6`,
+  `MAX_CONTRIBUICAO_TEXTO`, `MAX_NOME_CONTRIBUIDOR`,
+  `MAX_RELACAO_CONTRIBUIDOR`), `lib/types.ts` (tipo `Contribuicao`).
+- **Aceite:** SQL idempotente; RLS sem policies (anon não acessa nada).
+
+### T5.2 🔴 API de contribuições
+- **Arquivos:** `app/api/contribuicoes/route.ts` (POST envia — valida
+  página paga e `revelar_em` futuro, rate limit, teto de
+  `MAX_CONTRIBUICOES`, e-mail ao comprador; GET lista tudo para moderação),
+  `app/api/contribuicoes/[id]/route.ts` (PATCH alterna `aprovado`),
+  `lib/email.ts` (`sendContribuicaoEmail`).
+- **Aceite:** 7ª contribuição bloqueada; página sem revelação agendada ou já
+  revelada rejeita; 11 POSTs seguidos → `429`.
+
+### T5.3 🔴 Página do convidado `/contribuir/[id]`
+- **Arquivos:** `app/contribuir/[id]/page.tsx` (server component com os 3
+  estados: inválido, indisponível, formulário), `app/contribuir/[id]/
+  ContribuirClient.tsx` (formulário: nome, relação opcional, mensagem).
+- **Aceite:** link funciona sem login; some/bloqueia quando o prazo encerra.
+
+### T5.4 🔴 `PageRenderer`: seção "coro"
+- **Arquivo:** `components/PageRenderer.tsx`. Nova seção depois do clímax,
+  antes do fechamento — widening pós-pico sem disputar o Peak-End Rule com
+  o clímax nem com a assinatura final. Mesmo padrão de fade por scroll
+  (`Reveal`) do resto da página.
+- **Aceite:** sem contribuições, zero mudança visual; com elas, aparecem na
+  ordem de envio.
+
+### T5.5 🔴 Página pública repassa as aprovadas
+- **Arquivos:** `app/p/[slug]/page.tsx`, `app/p/[slug]/PublicPageClient.tsx`.
+- **Aceite:** só contribuições `aprovado=true` aparecem; gate da revelação
+  agendada (T2.1) continua intacto — contribuições só são buscadas depois
+  dele.
+
+### T5.6 🔴 Tela de sucesso: convite + moderação + Carta/Recordação
+- **Arquivo:** `app/preview/[id]/page.tsx`. Card "Convide mais gente" com
+  link copiável (só quando `revelar_em` é futuro); lista de moderação com
+  toggle aprovar/ocultar; `downloadCartaPDF` passa a incluir a seção das
+  contribuições aprovadas.
+- **Aceite:** toggle reflete no `/p/[slug]`; PDF inclui só as aprovadas.
+
+### T5.7 🟡 Nota no formulário de criação
+- **Arquivo:** `app/criar/page.tsx` — uma linha na etapa "quando revelar"
+  explicando que agendar libera o convite depois do pagamento.
+
+---
+
 ## Decisões que dependem do dono do produto (não são código)
 
 Estas travam tarefas se atrasarem — todas têm lead time externo (DNS, verificação de conta, etc.):

@@ -111,3 +111,13 @@ export const MIN_BLOCOS = 2;
 
 /** Emojis disponíveis para a reação do destinatário (RF16) — sóbrios, poucos. */
 export const EMOJIS_REACAO = ['❤️', '👏', '🥹', '😂'];
+
+/**
+ * Surpresa Coletiva (Fase 5): número máximo de pessoas convidadas a
+ * contribuir com uma mensagem curta na página (Lei de Hick — poucas vozes
+ * bem colocadas, não um mural aberto).
+ */
+export const MAX_CONTRIBUICOES = 6;
+export const MAX_CONTRIBUICAO_TEXTO = 400;
+export const MAX_NOME_CONTRIBUIDOR = 60;
+export const MAX_RELACAO_CONTRIBUIDOR = 40;

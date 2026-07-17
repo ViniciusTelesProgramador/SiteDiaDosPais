@@ -3,7 +3,14 @@
 import React, { useEffect, useState } from 'react';
 import { Loader2, Heart, Share2, Check } from 'lucide-react';
 import { getDraftBySlugFromIndexedDB } from '@/lib/localDatabase';
-import { normalizarMidias, normalizarTema, aindaNaoRevelada, type Bloco, type Midia } from '@/lib/types';
+import {
+  normalizarMidias,
+  normalizarTema,
+  aindaNaoRevelada,
+  type Bloco,
+  type Midia,
+  type Contribuicao,
+} from '@/lib/types';
 import { EMOJIS_REACAO } from '@/lib/config';
 import { track } from '@/lib/analytics';
 import PageRenderer from '@/components/PageRenderer';
@@ -28,6 +35,8 @@ export interface DadosPublicos {
   tema: string;
   revelar_em?: string | null;
   isMock?: boolean;
+  /** Mensagens aprovadas de outras pessoas (Fase 5 — Surpresa Coletiva). */
+  contribuicoes?: Contribuicao[];
 }
 
 interface PublicPageClientProps {
@@ -308,6 +317,7 @@ export default function PublicPageClient({
             blocos: data.blocos,
             midias: normalizarMidias(data.midias),
             tema: normalizarTema(data.tema),
+            contribuicoes: data.contribuicoes,
           }}
         />
 

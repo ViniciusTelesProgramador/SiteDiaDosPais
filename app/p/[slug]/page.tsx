@@ -39,7 +39,7 @@ export default async function Page({ params }: Props) {
   const { data } = await supabaseAdmin
     .from('paginas')
     .select(
-      'slug, nome_destinatario, mensagem, blocos, midias, tema, revelar_em, visualizacoes'
+      'id, slug, nome_destinatario, mensagem, blocos, midias, tema, revelar_em, visualizacoes'
     )
     .eq('slug', slug)
     .eq('pago', true)
@@ -70,6 +70,14 @@ export default async function Page({ params }: Props) {
       if (error) console.error('[Views] Erro ao incrementar visualização:', error);
     });
 
+  // Contribuições aprovadas (Fase 5 — Surpresa Coletiva)
+  const { data: contribuicoes } = await supabaseAdmin
+    .from('contribuicoes')
+    .select('id, nome, relacao, texto, aprovado, criado_em')
+    .eq('pagina_id', data.id)
+    .eq('aprovado', true)
+    .order('criado_em', { ascending: true });
+
   const dadosPublicos: DadosPublicos = {
     slug,
     nome_destinatario: data.nome_destinatario,
@@ -77,6 +85,7 @@ export default async function Page({ params }: Props) {
     blocos: data.blocos,
     midias: data.midias,
     tema: data.tema,
+    contribuicoes: contribuicoes || [],
   };
 
   return <PublicPageClient slug={slug} initialData={dadosPublicos} />;

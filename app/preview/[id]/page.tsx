@@ -3,8 +3,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { getDraftFromIndexedDB, saveDraftToIndexedDB, type PageDraft } from '@/lib/localDatabase';
-import { normalizarMidias, normalizarTema, ordenarBlocosNarrativa } from '@/lib/types';
-import { PRECO_UNICO_FORMATADO, ORDEM_NARRATIVA } from '@/lib/config';
+import { normalizarMidias, normalizarTema, ordenarBlocosNarrativa, type Contribuicao } from '@/lib/types';
+import { PRECO_UNICO_FORMATADO, ORDEM_NARRATIVA, MAX_CONTRIBUICOES } from '@/lib/config';
 import { track } from '@/lib/analytics';
 import PageRenderer from '@/components/PageRenderer';
 import QRCode from 'qrcode';
@@ -25,6 +25,7 @@ import {
   Download,
   FileText,
   Home,
+  UserPlus,
 } from 'lucide-react';
 
 const POLL_INTERVALO_MS = 4500;
@@ -60,6 +61,10 @@ export default function PreviewPagina() {
   // Tela de sucesso
   const [qrUrl, setQrUrl] = useState<string>('');
   const [linkCopied, setLinkCopied] = useState(false);
+
+  // Surpresa Coletiva (Fase 5): convite + moderação
+  const [contribuicoes, setContribuicoes] = useState<Contribuicao[]>([]);
+  const [inviteCopied, setInviteCopied] = useState(false);
 
   const pollInicioRef = useRef<number>(0);
 
@@ -177,6 +182,40 @@ export default function PreviewPagina() {
       });
     }
   }, [paid, generatedSlug, id]);
+
+  // ---- Surpresa Coletiva (Fase 5): busca contribuições quando há tempo até a revelação ----
+  useEffect(() => {
+    if (!paid || !draft) return;
+    if (!draft.revelar_em || new Date(draft.revelar_em).getTime() <= Date.now()) return;
+
+    fetch(`/api/contribuicoes?paginaId=${draft.id}`)
+      .then((r) => r.json())
+      .then((data) => setContribuicoes(data.contribuicoes || []))
+      .catch((err) => console.error('Erro ao buscar contribuições:', err));
+  }, [paid, draft]);
+
+  const toggleAprovado = async (contribuicaoId: string, aprovado: boolean) => {
+    setContribuicoes((prev) =>
+      prev.map((c) => (c.id === contribuicaoId ? { ...c, aprovado } : c))
+    );
+    try {
+      await fetch(`/api/contribuicoes/${contribuicaoId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ aprovado }),
+      });
+    } catch (err) {
+      console.error('Erro ao atualizar contribuição:', err);
+    }
+  };
+
+  const handleCopyInvite = () => {
+    if (!draft) return;
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    navigator.clipboard.writeText(`${origin}/contribuir/${draft.id}`);
+    setInviteCopied(true);
+    setTimeout(() => setInviteCopied(false), 2000);
+  };
 
   // ---- Checkout ----
   const handleCheckoutSubmit = async (e: React.FormEvent) => {
@@ -373,6 +412,18 @@ export default function PreviewPagina() {
       escreverParagrafo(draft.mensagem.trim(), 12, 'italic');
     }
 
+    // Coro (Fase 5): mensagens aprovadas de outras pessoas
+    const contribuicoesAprovadas = contribuicoes.filter((c) => c.aprovado);
+    if (contribuicoesAprovadas.length > 0) {
+      garantirEspaco(24);
+      y += 10;
+      escreverTitulo('Você foi lembrado por mais gente hoje');
+      for (const c of contribuicoesAprovadas) {
+        escreverParagrafo(`"${c.texto}"`, 11, 'italic');
+        escreverParagrafo(`— ${c.nome}${c.relacao ? `, ${c.relacao}` : ''}`, 9, 'normal');
+      }
+    }
+
     // A resposta dele (Recordação — só quando o pai escreveu de volta)
     if (temResposta) {
       garantirEspaco(34);
@@ -540,6 +591,71 @@ export default function PreviewPagina() {
                 Para {draft.nome_destinatario}
               </span>
             </div>
+
+            {/* Surpresa Coletiva (Fase 5): só disponível com revelação agendada no futuro */}
+            {draft.revelar_em && new Date(draft.revelar_em).getTime() > Date.now() && (
+              <div className="bg-indigo-50/60 rounded-2xl p-5 border border-indigo-100 text-left mb-8 space-y-4">
+                <div>
+                  <span className="flex items-center gap-2 text-sm font-bold text-indigo-900">
+                    <UserPlus className="w-4 h-4" />
+                    <span>Convide mais gente</span>
+                  </span>
+                  <p className="text-xs text-indigo-700/80 mt-1.5 leading-relaxed">
+                    Compartilhe este link com quem também quiser deixar uma mensagem — ela
+                    entra junto na surpresa, antes da revelação.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between gap-3 bg-white rounded-xl border border-indigo-100 px-3 py-2.5">
+                  <span className="truncate text-xs font-mono text-indigo-600">
+                    {origin}/contribuir/{draft.id}
+                  </span>
+                  <button
+                    onClick={handleCopyInvite}
+                    className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-1.5 flex-shrink-0 transition-colors"
+                  >
+                    {inviteCopied ? (
+                      <Check className="w-3.5 h-3.5" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5" />
+                    )}
+                    <span>{inviteCopied ? 'Copiado' : 'Copiar'}</span>
+                  </button>
+                </div>
+
+                {contribuicoes.length > 0 && (
+                  <div className="space-y-2 pt-1">
+                    <span className="block text-xxs font-bold uppercase tracking-wider text-indigo-400">
+                      Mensagens recebidas ({contribuicoes.length}/{MAX_CONTRIBUICOES})
+                    </span>
+                    {contribuicoes.map((c) => (
+                      <div
+                        key={c.id}
+                        className="flex items-start justify-between gap-3 bg-white rounded-xl border border-indigo-100 px-3 py-2.5"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-xs text-gray-700 leading-snug">{c.texto}</p>
+                          <span className="text-[10px] text-gray-400">
+                            — {c.nome}
+                            {c.relacao ? `, ${c.relacao}` : ''}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => toggleAprovado(c.id, !c.aprovado)}
+                          className={`flex-shrink-0 px-2.5 py-1 rounded-full text-[10px] font-bold transition-colors ${
+                            c.aprovado
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : 'bg-gray-100 text-gray-500'
+                          }`}
+                        >
+                          {c.aprovado ? 'Visível' : 'Oculta'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-4">

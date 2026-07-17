@@ -59,6 +59,27 @@ create table if not exists public.pagamentos (
   criado_em timestamptz not null default now()
 );
 
+-- ----------------------------------------------------------------------------
+-- Tabela: contribuicoes (Fase 5 — Surpresa Coletiva)
+-- Mensagens curtas de outras pessoas (irmãos, mãe, netos), convidadas pelo
+-- comprador via link /contribuir/[id] depois do pagamento. Entram aprovadas
+-- por padrão; o comprador pode ocultar qualquer uma antes da revelação.
+-- ----------------------------------------------------------------------------
+create table if not exists public.contribuicoes (
+  id uuid primary key default gen_random_uuid(),
+  pagina_id uuid not null references public.paginas (id) on delete cascade,
+  nome text not null,
+  relacao text,
+  texto text not null,
+  aprovado boolean not null default true,
+  criado_em timestamptz not null default now()
+);
+
+create index if not exists contribuicoes_pagina_idx
+  on public.contribuicoes (pagina_id);
+
+alter table public.contribuicoes enable row level security;
+
 -- ============================================================================
 -- MIGRAÇÃO de bancos criados com o schema antigo (idempotente).
 -- ============================================================================

@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { Heart } from 'lucide-react';
 import { ORDEM_NARRATIVA, BLOCO_CLIMAX } from '@/lib/config';
-import { ordenarBlocosNarrativa, type Bloco, type Midia } from '@/lib/types';
+import { ordenarBlocosNarrativa, type Bloco, type Midia, type Contribuicao } from '@/lib/types';
 
 /**
  * Renderização visual da página do presente — componente único usado pelo
@@ -28,6 +28,8 @@ export interface ConteudoPagina {
   blocos?: Bloco[] | null;
   midias: Midia[];
   tema: string;
+  /** Mensagens de outras pessoas, já filtradas para aprovadas (Fase 5). */
+  contribuicoes?: Contribuicao[] | null;
 }
 
 /** Fade suave quando a seção entra na viewport (leitor controla o ritmo). */
@@ -147,6 +149,7 @@ export default function PageRenderer({
   const classico = conteudo.tema !== 'descontraido';
   const ordenados = ordenarBlocosNarrativa(conteudo.blocos, ORDEM_NARRATIVA);
   const temMensagem = Boolean(conteudo.mensagem?.trim());
+  const contribuicoesAprovadas = (conteudo.contribuicoes || []).filter((c) => c.aprovado);
 
   // Ordem narrativa: abertura (frase) -> fotos -> aprofundamento -> clímax
   const abertura = ordenados.filter((b) => b.pergunta_id === 'frase');
@@ -208,6 +211,53 @@ export default function PageRenderer({
       </div>
     );
 
+  // Coro (Fase 5 — Surpresa Coletiva): outras vozes, logo depois do clímax
+  // pessoal, antes da assinatura de fechamento (widening pós-pico, sem
+  // disputar o Peak-End Rule com o clímax nem com o fechamento).
+  const Coro = () =>
+    contribuicoesAprovadas.length === 0 ? null : (
+      <div className="pt-8 space-y-5">
+        <Reveal ativo={cerimonia}>
+          <div
+            className={`text-xs tracking-[0.2em] uppercase text-center ${
+              classico ? 'text-[#8C7A5C]' : 'text-emerald-700 font-extrabold'
+            }`}
+          >
+            Você foi lembrado por mais gente hoje
+          </div>
+        </Reveal>
+        <div className="space-y-3">
+          {contribuicoesAprovadas.map((c, i) => (
+            <Reveal key={c.id} ativo={cerimonia} atrasoMs={i * 150}>
+              <div
+                className={
+                  classico
+                    ? 'bg-white/60 border border-[#E5E0D5] rounded-2xl p-4 sm:p-5'
+                    : 'bg-white border border-teal-100 rounded-2xl p-4 sm:p-5 shadow-sm'
+                }
+              >
+                <p
+                  className={`text-sm sm:text-base leading-relaxed whitespace-pre-line italic ${
+                    classico ? 'text-[#3A3530]' : 'text-teal-950 font-medium'
+                  }`}
+                >
+                  {c.texto}
+                </p>
+                <p
+                  className={`mt-2 text-xs ${
+                    classico ? 'text-[#8C7A5C]' : 'text-teal-700/70 font-semibold'
+                  }`}
+                >
+                  — {c.nome}
+                  {c.relacao ? `, ${c.relacao}` : ''}
+                </p>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+      </div>
+    );
+
   if (classico) {
     return (
       <div className="bg-[#FAF8F5] border border-[#E5E0D5] p-6 sm:p-10 rounded-3xl shadow-2xl font-serif text-[#2C2A27]">
@@ -260,6 +310,9 @@ export default function PageRenderer({
             {climax.map((bloco) => (
               <BlocoClimax key={bloco.pergunta_id} bloco={bloco} />
             ))}
+
+            {/* Coro (Fase 5) */}
+            <Coro />
 
             {/* Fechamento: curto, como assinatura */}
             {temMensagem && (
@@ -330,6 +383,9 @@ export default function PageRenderer({
         {climax.map((bloco) => (
           <BlocoClimax key={bloco.pergunta_id} bloco={bloco} />
         ))}
+
+        {/* Coro (Fase 5) */}
+        <Coro />
 
         {/* Fechamento */}
         {temMensagem && (

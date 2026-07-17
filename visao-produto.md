@@ -124,3 +124,4 @@ Estado da integração (13/07/2026):
 | Lembrete pré-revelação (gatilho 2) | Plano **T2.8** (🟡 só se sobrar prazo; reusa o cron da limpeza) |
 | Trilha sonora sutil | Dobrada dentro da cerimônia (T2.1): som só via gesto de abertura, opcional; sem asset excelente, silêncio |
 | Áudio do comprador, IA de apoio à escrita, playlist, vídeo | v2 — registrados no "Fora do MVP" da especificação |
+| Convidar a família a contribuir (amplia o gatilho 1 — mais gente investe esforço próprio) | Plano **Fase 5 — Surpresa Coletiva** (16/07/2026): link pós-pagamento, mensagens curtas moderadas pelo comprador, exibidas logo após o clímax |

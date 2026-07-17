@@ -651,7 +651,8 @@ export default function CriarPresente() {
                         </span>
                         <span className="text-xs text-gray-500">
                           Antes disso, quem abrir vê uma contagem regressiva — a surpresa é de
-                          verdade. Pode entregar o QR code sem medo.
+                          verdade. Pode entregar o QR code sem medo. E dá tempo de convidar mais
+                          gente da família a participar, depois do pagamento.
                         </span>
                       </div>
                       {revelarModo === 'diadospais' && (

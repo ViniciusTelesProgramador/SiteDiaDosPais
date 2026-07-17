@@ -181,6 +181,36 @@ export async function sendReactionTextEmail(
   });
 }
 
+/**
+ * Notifica o comprador que alguém quis participar da Surpresa Coletiva
+ * (Fase 5) — convida a rever/aprovar em `/preview/[id]` antes da revelação.
+ */
+export async function sendContribuicaoEmail(
+  emailComprador: string,
+  nomeDestinatario: string,
+  nomeContribuidor: string,
+  paginaId: string
+): Promise<boolean> {
+  const previewUrl = `${appUrl()}/preview/${paginaId}`;
+  const html = layoutEmail(`
+    <div style="text-align: center; margin-bottom: 24px;">
+      <span style="font-size: 36px;">✍️</span>
+      <h2 style="color: #2c2a27; margin-top: 10px; font-weight: normal;">${nomeContribuidor} quis participar.</h2>
+    </div>
+    <p style="text-align: center; font-size: 15px;">Deixou uma mensagem para entrar na surpresa de <strong>${nomeDestinatario}</strong>.</p>
+    <p style="font-size: 14px; color: #555; text-align: center;">Dá uma olhada antes da revelação — você decide o que entra.</p>
+    <p style="margin: 28px 0; text-align: center;">
+      <a href="${previewUrl}" style="background-color: #2c2a27; color: #faf8f5; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block;">Rever mensagens</a>
+    </p>
+  `);
+
+  return enviar({
+    to: emailComprador,
+    subject: `${nomeContribuidor} quis participar da surpresa para ${nomeDestinatario}`,
+    html,
+  });
+}
+
 /** Lembrete pré-revelação (T2.8): enviado até 48h antes de revelar_em. */
 export async function sendReminderEmail(
   emailComprador: string,

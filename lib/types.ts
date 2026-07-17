@@ -11,6 +11,16 @@ export interface Bloco {
   texto: string;
 }
 
+/** Mensagem curta de outra pessoa (Fase 5 — Surpresa Coletiva). */
+export interface Contribuicao {
+  id: string;
+  nome: string;
+  relacao: string | null;
+  texto: string;
+  aprovado: boolean;
+  criado_em: string;
+}
+
 export interface Pagina {
   id: string;
   slug: string | null;
