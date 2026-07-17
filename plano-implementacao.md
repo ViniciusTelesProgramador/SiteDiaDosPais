@@ -429,6 +429,34 @@ console.
 
 ---
 
+## Fase 8 — Landing Page premium: animações via ui-ux-pro-max (aprovada em 17/07/2026)
+
+> Origem: o Pedro pediu para elevar o site inteiro (LP ao entregável) a um
+> patamar "premium", usando a skill `ui-ux-pro-max` recém-instalada.
+> Escopo grande demais para uma fase só — dividido em Fase 8 (LP, este
+> plano), Fase 9 (formulário `/criar`) e Fase 10 (refino do entregável),
+> ainda não iniciadas.
+
+- **Fonte de dados:** Python não instalado (a própria skill instrui a
+  nunca instalá-lo por conta própria) — recomendações extraídas
+  diretamente dos CSVs em `.claude/skills/ui-ux-pro-max/data/` (styles,
+  colors, ui-reasoning) em vez do script `search.py`.
+- **Decisão do Pedro:** manter a cor de marca indigo-600 — ganho 100% em
+  movimento/percepção de qualidade, sem trocar paleta.
+- **Arquivos:** `app/globals.css` (`prefers-reduced-motion` global,
+  cobrindo também as animações das Fases 6/7; técnica de accordion
+  `grid-template-rows`), `components/ScrollReveal.tsx` (novo, fade+stagger
+  ao entrar na viewport), `components/FaqItem.tsx` (novo, substitui
+  `<details>` nativo), `app/page.tsx` (hero com entrada escalonada, cards
+  com scroll-reveal, FAQ suave, feedback de toque nos CTAs).
+- **Verificação real:** Playwright em mobile (390px, sem scroll
+  horizontal) e desktop (1440px) confirmando fade/stagger correto ao
+  entrar na viewport, FAQ abrindo/fechando, CTA navegando, e uma segunda
+  passagem com `prefers-reduced-motion: reduce` emulado confirmando que o
+  conteúdo aparece direto, sem animação. Zero erros de console.
+
+---
+
 ## Decisões que dependem do dono do produto (não são código)
 
 Estas travam tarefas se atrasarem — todas têm lead time externo (DNS, verificação de conta, etc.):

@@ -34,3 +34,13 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# skills de terceiros instaladas via CLI (ui-ux-pro-max) — de uso geral,
+# não fazem parte do código do Recado Surpresa
+/.claude/skills/ui-ux-pro-max/
+/.claude/skills/design/
+/.claude/skills/design-system/
+/.claude/skills/ui-styling/
+/.claude/skills/banner-design/
+/.claude/skills/brand/
+/.claude/skills/slides/

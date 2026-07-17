@@ -87,3 +87,31 @@ body {
 .animate-pulse-ring {
   animation: pulse-ring 1600ms ease-out infinite;
 }
+
+/* Fase 8: acessibilidade (ui-ux-pro-max, prioridade 1 — CRITICAL) — quem
+   pede menos movimento não deve receber nenhuma das animações acima. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-slide-in,
+  .animate-photo-drop,
+  .animate-climax-glow,
+  .animate-pulse-ring {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* Accordion suave (Fase 8, FaqItem) — técnica grid-template-rows 0fr→1fr,
+   evita medir altura "auto" em JS e não causa CLS. */
+.accordion-linha {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 300ms ease-out;
+}
+
+.accordion-linha.aberto {
+  grid-template-rows: 1fr;
+}
+
+.accordion-conteudo {
+  overflow: hidden;
+}
