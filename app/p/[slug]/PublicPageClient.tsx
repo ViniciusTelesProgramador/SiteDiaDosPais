@@ -321,6 +321,7 @@ export default function PublicPageClient({
             tema: normalizarTema(data.tema),
             contribuicoes: data.contribuicoes,
             musicaYoutubeId: data.musica_youtube_id,
+            slugPublico: data.slug,
           }}
         />
 

@@ -6,6 +6,7 @@ import { Heart, ChevronLeft, ChevronRight } from 'lucide-react';
 import { ORDEM_NARRATIVA, BLOCO_CLIMAX } from '@/lib/config';
 import { ordenarBlocosNarrativa, type Bloco, type Midia, type Contribuicao } from '@/lib/types';
 import MusicPlayer from './MusicPlayer';
+import ShareStoryButton from './ShareStoryButton';
 
 /**
  * Renderização visual da página do presente — componente único usado pelo
@@ -33,10 +34,16 @@ export interface ConteudoPagina {
   contribuicoes?: Contribuicao[] | null;
   /** ID do vídeo do YouTube (Fase 6) — null/undefined = sem música. */
   musicaYoutubeId?: string | null;
+  /**
+   * Slug da página pública (Fase 7) — só presente em /p/[slug]. Controla o
+   * botão de compartilhar nos Stories: sem slug (prévia ao vivo, rascunho
+   * pré-pagamento), o botão simplesmente não aparece.
+   */
+  slugPublico?: string | null;
 }
 
-const ROTACOES_CLASSICO = ['-rotate-1', 'rotate-1', '-rotate-2', 'rotate-2', 'rotate-1'];
-const ROTACOES_DESCONTRAIDO = ['-rotate-2', 'rotate-1', '-rotate-1', 'rotate-2', 'rotate-1'];
+const GRAUS_CLASSICO = ['-1deg', '1deg', '-2deg', '2deg', '1deg'];
+const GRAUS_DESCONTRAIDO = ['-2deg', '1deg', '-1deg', '2deg', '1deg'];
 
 function FotoComLegenda({
   midia,
@@ -50,7 +57,8 @@ function FotoComLegenda({
   if (classico) {
     return (
       <figure
-        className={`bg-white p-4 pb-5 shadow-md border border-[#E5E0D5] max-w-xs sm:max-w-sm mx-auto ${ROTACOES_CLASSICO[idx % ROTACOES_CLASSICO.length]}`}
+        className="animate-photo-drop bg-white p-4 pb-5 shadow-md border border-[#E5E0D5] w-full max-w-xs sm:max-w-sm mx-auto"
+        style={{ '--photo-rotate': GRAUS_CLASSICO[idx % GRAUS_CLASSICO.length] } as React.CSSProperties}
       >
         <div className="aspect-square w-full overflow-hidden bg-stone-100 relative">
           <Image
@@ -75,7 +83,8 @@ function FotoComLegenda({
   return (
     <figure className="flex flex-col items-center gap-2">
       <div
-        className={`relative w-48 sm:w-56 aspect-square rounded-3xl overflow-hidden shadow-lg border-4 border-white bg-slate-100 ${ROTACOES_DESCONTRAIDO[idx % ROTACOES_DESCONTRAIDO.length]} flex-shrink-0`}
+        className="animate-photo-drop relative w-48 sm:w-56 aspect-square rounded-3xl overflow-hidden shadow-lg border-4 border-white bg-slate-100 flex-shrink-0"
+        style={{ '--photo-rotate': GRAUS_DESCONTRAIDO[idx % GRAUS_DESCONTRAIDO.length] } as React.CSSProperties}
       >
         <Image
           src={midia.url}
@@ -133,7 +142,16 @@ export default function PageRenderer({ conteudo }: { conteudo: ConteudoPagina })
   // Clímax: slide próprio, mais respiro, título entra primeiro e o texto
   // num segundo fôlego (atraso de 350ms).
   const SlideClimax = ({ bloco }: { bloco: Bloco }) => (
-    <div className="text-center space-y-5 py-4">
+    <div className="relative text-center space-y-5 py-4">
+      <div
+        aria-hidden
+        className="animate-climax-glow pointer-events-none absolute inset-0 -z-10 blur-3xl"
+        style={{
+          background: classico
+            ? 'radial-gradient(circle at 50% 45%, rgba(140,122,92,0.22), transparent 70%)'
+            : 'radial-gradient(circle at 50% 45%, rgba(16,185,129,0.20), transparent 70%)',
+        }}
+      />
       <div
         className={`animate-slide-in text-xs tracking-[0.25em] uppercase ${
           classico ? 'text-[#8C7A5C]' : 'text-emerald-800 font-extrabold'
@@ -164,14 +182,15 @@ export default function PageRenderer({ conteudo }: { conteudo: ConteudoPagina })
         Você foi lembrado por mais gente hoje
       </div>
       <div className="space-y-3">
-        {contribuicoesAprovadas.map((c) => (
+        {contribuicoesAprovadas.map((c, i) => (
           <div
             key={c.id}
-            className={
+            className={`animate-slide-in ${
               classico
                 ? 'bg-white/60 border border-[#E5E0D5] rounded-2xl p-4'
                 : 'bg-white border border-teal-100 rounded-2xl p-4 shadow-sm'
-            }
+            }`}
+            style={{ animationDelay: `${i * 150}ms`, animationFillMode: 'backwards' }}
           >
             <p
               className={`text-sm leading-relaxed whitespace-pre-line italic ${
@@ -221,6 +240,14 @@ export default function PageRenderer({ conteudo }: { conteudo: ConteudoPagina })
           Feliz Dia dos Pais
         </div>
       </div>
+      {conteudo.slugPublico && (
+        <ShareStoryButton
+          nomeDestinatario={conteudo.nome_destinatario}
+          frase={abertura[0]?.texto}
+          fotoUrl={conteudo.midias[0]?.url}
+          classico={classico}
+        />
+      )}
     </div>
   );
 

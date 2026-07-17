@@ -385,6 +385,50 @@ tocar/pausar funcional, sem erros de console.
 
 ---
 
+## Fase 7 — Card para Stories + animações de valor (aprovada em 17/07/2026)
+
+> Origem: ao ver a prévia real da Fase 6, o Pedro reportou um bug (fotos
+> aparecendo como quadrado branco) e pediu mais duas coisas: animações que
+> agreguem valor e um botão de compartilhar um card nos Stories no final da
+> história, pra ajudar o site a circular.
+
+### Bug corrigido
+- `components/PageRenderer.tsx` — a `<figure>` do slide de foto (tema
+  clássico) só tinha `max-w-xs` (sem `w-full`); virou filho de um `flex
+  items-center justify-center` na Fase 6 e, sem largura própria num
+  contêiner flex, o `w-full` do miolo da imagem não tinha contra o que
+  resolver e colapsava. Corrigido adicionando `w-full` na `<figure>`.
+  Confirmado com Playwright que a foto ocupa o quadrado inteiro.
+
+### Compartilhar nos Stories
+- **Arquivos novos:** `lib/shareCard.ts` (gera um PNG 1080×1920 via Canvas
+  2D puro — sem dependência nova — com foto, nome, frase de abertura e
+  marca do site), `components/ShareStoryButton.tsx` (botão com
+  `navigator.share` de arquivo quando suportado, fallback de download
+  quando não).
+- Só aparece no slide de fechamento (naturalmente "o final da história") e
+  só quando `ConteudoPagina.slugPublico` existe — presente apenas em
+  `/p/[slug]` (`PublicPageClient.tsx`), ausente na prévia ao vivo e no
+  rascunho pré-pagamento.
+- Decisão do Pedro: o card pode conter nome/frase/foto (não só marca
+  genérica) — quem compartilha é o próprio pai, já depois de ver tudo, logo
+  o consentimento é dele (diferente do OG genérico de RF10, que protege
+  quem *ainda não* abriu). O link do compartilhamento aponta pra home do
+  site, não pro `/p/[slug]` privado — o objetivo é crescimento.
+
+### Animações
+- `app/globals.css`: `@keyframes photo-drop` (fotos "pousando" — queda +
+  acerto de rotação), `climax-glow` (brilho radial suave atrás do clímax),
+  `pulse-ring` (anel pulsante no botão de música enquanto toca); coro
+  (Fase 5) ganhou entrada escalonada por card.
+
+**Verificação real:** fluxo ponta a ponta completo via Playwright — criação
+→ prévia (foto corrigida) → pagamento mock → página pública → cerimônia →
+navegação até o fechamento → geração e download do card, sem nenhum erro de
+console.
+
+---
+
 ## Decisões que dependem do dono do produto (não são código)
 
 Estas travam tarefas se atrasarem — todas têm lead time externo (DNS, verificação de conta, etc.):

@@ -41,3 +41,49 @@ body {
 .animate-slide-in {
   animation: slide-in 400ms ease-out;
 }
+
+/* Fase 7: fotos "pousando" — queda leve + acerto de rotação por cima do
+   fade do slide, sensação de foto caindo na mesa. */
+@keyframes photo-drop {
+  from {
+    opacity: 0;
+    transform: translateY(18px) rotate(0deg) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) rotate(var(--photo-rotate, 0deg)) scale(1);
+  }
+}
+
+.animate-photo-drop {
+  animation: photo-drop 550ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Fase 7: brilho suave atrás do clímax — reforça o pico sem virar efeito
+   de app de jogo. */
+@keyframes climax-glow {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-climax-glow {
+  animation: climax-glow 1200ms ease-out;
+}
+
+/* Fase 7: anel pulsante no botão de música enquanto toca. */
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(140, 122, 92, 0.35);
+  }
+  100% {
+    box-shadow: 0 0 0 10px rgba(140, 122, 92, 0);
+  }
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 1600ms ease-out infinite;
+}

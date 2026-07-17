@@ -71,7 +71,7 @@ export default function MusicPlayer({ youtubeId, classico }: Props) {
       title="A música de vocês"
       className={`relative flex-shrink-0 w-11 h-11 rounded-full overflow-hidden transition-opacity disabled:opacity-40 ${
         classico ? 'border border-[#D1C9BA]' : 'border border-teal-100 shadow-sm'
-      }`}
+      } ${tocando ? 'animate-pulse-ring' : ''}`}
     >
       <div ref={containerRef} className="absolute inset-0 w-full h-full pointer-events-none" />
       <div className="absolute inset-0 flex items-center justify-center bg-black/25">
