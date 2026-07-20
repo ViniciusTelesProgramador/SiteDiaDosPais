@@ -485,6 +485,36 @@ console.
 
 ---
 
+## Fase 11 (adiantada) — Entregável premium: mais animação + ícones 3D (aprovada em 20/07/2026)
+
+> Origem: Pedro insatisfeito — Fases 8-9 só mexeram na LP; o entregável de
+> verdade (a página do presente) continuava "ruim", sem animação e sem
+> sensação premium. Prazo apertado, adiantou a Fase 11 do roadmap (estava
+> planejada pra depois do formulário).
+
+- **Ícones 3D:** Pedro escolheu emoji glossy cartoon (não o efeito sóbrio
+  de sombra/vidro que eu recomendei). Caminho sem risco de licença: emoji
+  Unicode de verdade (o SO já renderiza glossy/3D nativo) — trocado o
+  ícone `Heart` (lucide) por ❤️ real no fechamento (`SlideFechamento`,
+  bem maior), acrescentado 🤍 no título do coro (`SlideCoro`). Clímax
+  continua só tipografia — texto mais vulnerável, emoji destoaria.
+- **Halo pulsante atrás do 🎁** na cerimônia de abertura
+  (`PublicPageClient`, fase `convite`).
+- **Mais animação geral:** `@keyframes slide-in` (toda transição de slide
+  do storytime) ganhou *scale* somado ao fade+translateY — sensação de
+  "entrar em foco"; novo `@keyframes ambient-glow` — respiração sutil de
+  fundo atrás do card inteiro (clássico e descontraído), pra página
+  parecer viva mesmo parada num slide só.
+- Tudo somado à regra `prefers-reduced-motion` já existente (Fase 8) —
+  confirmado que zera as animações novas também.
+- **Verificação real:** fluxo completo via Playwright (criação →
+  pagamento mock → página pública → cerimônia → fechamento);
+  screenshots confirmam visualmente o halo do presente e o coração
+  grande no fechamento; teste direto da regra CSS confirma
+  `prefers-reduced-motion` neutralizando o halo. Zero erros de console.
+
+---
+
 ## Decisões que dependem do dono do produto (não são código)
 
 Estas travam tarefas se atrasarem — todas têm lead time externo (DNS, verificação de conta, etc.):

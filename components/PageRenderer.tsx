@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
-import { Heart, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { ORDEM_NARRATIVA, BLOCO_CLIMAX } from '@/lib/config';
 import { ordenarBlocosNarrativa, type Bloco, type Midia, type Contribuicao } from '@/lib/types';
 import MusicPlayer from './MusicPlayer';
@@ -175,11 +175,14 @@ export default function PageRenderer({ conteudo }: { conteudo: ConteudoPagina })
   const SlideCoro = () => (
     <div className="space-y-4 py-2">
       <div
-        className={`text-xs tracking-[0.2em] uppercase text-center ${
+        className={`flex items-center justify-center gap-2 text-xs tracking-[0.2em] uppercase text-center ${
           classico ? 'text-[#8C7A5C]' : 'text-emerald-700 font-extrabold'
         }`}
       >
-        Você foi lembrado por mais gente hoje
+        <span role="img" aria-label="Coração branco">
+          🤍
+        </span>
+        <span>Você foi lembrado por mais gente hoje</span>
       </div>
       <div className="space-y-3">
         {contribuicoesAprovadas.map((c, i) => (
@@ -229,9 +232,9 @@ export default function PageRenderer({ conteudo }: { conteudo: ConteudoPagina })
         </div>
       )}
       <div>
-        <Heart
-          className={`w-6 h-6 mx-auto fill-current ${classico ? 'text-red-800/70' : 'text-rose-500'}`}
-        />
+        <span className="text-4xl leading-none" role="img" aria-label="Coração">
+          ❤️
+        </span>
         <div
           className={`text-xs tracking-wider uppercase mt-2 ${
             classico ? 'text-[#8C7A5C]' : 'text-teal-700/70 font-bold'
@@ -386,8 +389,13 @@ export default function PageRenderer({ conteudo }: { conteudo: ConteudoPagina })
 
   if (classico) {
     return (
-      <div className="bg-[#FAF8F5] border border-[#E5E0D5] p-6 sm:p-10 rounded-3xl shadow-2xl font-serif text-[#2C2A27]">
-        <div className="border border-[#D1C9BA] p-5 sm:p-8 rounded-2xl relative">
+      <div className="relative overflow-hidden bg-[#FAF8F5] border border-[#E5E0D5] p-6 sm:p-10 rounded-3xl shadow-2xl font-serif text-[#2C2A27]">
+        <div
+          aria-hidden
+          className="animate-ambient-glow pointer-events-none absolute inset-0 blur-3xl"
+          style={{ background: 'radial-gradient(circle, rgba(140,122,92,0.18), transparent 60%)' }}
+        />
+        <div className="relative z-10 border border-[#D1C9BA] p-5 sm:p-8 rounded-2xl">
           <div className="absolute top-2 left-2 text-[#D1C9BA] text-xs">◆</div>
           <div className="absolute top-2 right-2 text-[#D1C9BA] text-xs">◆</div>
           <div className="absolute bottom-2 left-2 text-[#D1C9BA] text-xs">◆</div>
@@ -428,7 +436,13 @@ export default function PageRenderer({ conteudo }: { conteudo: ConteudoPagina })
 
   // ---- Tema Descontraído ----
   return (
-    <div className="bg-white/90 backdrop-blur-md border border-teal-50 p-6 sm:p-10 rounded-3xl shadow-2xl shadow-emerald-100/50 font-sans text-[#1E302E]">
+    <div className="relative overflow-hidden bg-white/90 backdrop-blur-md border border-teal-50 p-6 sm:p-10 rounded-3xl shadow-2xl shadow-emerald-100/50 font-sans text-[#1E302E]">
+      <div
+        aria-hidden
+        className="animate-ambient-glow pointer-events-none absolute inset-0 blur-3xl"
+        style={{ background: 'radial-gradient(circle, rgba(16,185,129,0.16), transparent 60%)' }}
+      />
+      <div className="relative z-10">
       {conteudo.musicaYoutubeId ? (
         <div className="flex items-start justify-between gap-3 mb-6">
           <div className="w-11 flex-shrink-0" />
@@ -455,6 +469,7 @@ export default function PageRenderer({ conteudo }: { conteudo: ConteudoPagina })
 
       <Dots />
       <Viewport />
+      </div>
     </div>
   );
 }

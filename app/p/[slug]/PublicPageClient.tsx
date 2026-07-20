@@ -248,12 +248,20 @@ export default function PublicPageClient({
           onClick={abrirPresente}
           className="text-center space-y-8 py-16 max-w-sm mx-auto group cursor-pointer"
         >
-          <div
-            className={`w-24 h-24 rounded-full mx-auto flex items-center justify-center text-4xl transition-transform duration-500 group-hover:scale-105 group-active:scale-95 shadow-lg ${
-              classico ? 'bg-[#FAF8F5] border border-[#D1C9BA]' : 'bg-white border border-teal-100'
-            }`}
-          >
-            🎁
+          <div className="relative w-24 h-24 mx-auto">
+            <div
+              aria-hidden
+              className={`animate-gift-pulse absolute inset-0 rounded-full ${
+                classico ? 'bg-[#8C7A5C]/40' : 'bg-emerald-400/40'
+              }`}
+            />
+            <div
+              className={`relative w-24 h-24 rounded-full flex items-center justify-center text-4xl transition-transform duration-500 group-hover:scale-105 group-active:scale-95 shadow-lg ${
+                classico ? 'bg-[#FAF8F5] border border-[#D1C9BA]' : 'bg-white border border-teal-100'
+              }`}
+            >
+              🎁
+            </div>
           </div>
           <div className="space-y-3">
             <h1
