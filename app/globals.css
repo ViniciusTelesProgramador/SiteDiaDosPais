@@ -94,7 +94,8 @@ body {
   .animate-slide-in,
   .animate-photo-drop,
   .animate-climax-glow,
-  .animate-pulse-ring {
+  .animate-pulse-ring,
+  .animate-float {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
   }
@@ -114,4 +115,19 @@ body {
 
 .accordion-conteudo {
   overflow: hidden;
+}
+
+/* Fase 9: flutuação contínua e sutil do card decorativo do hero. */
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.animate-float {
+  animation: float 4s ease-in-out infinite;
 }

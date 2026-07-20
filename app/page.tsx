@@ -17,87 +17,116 @@ import FaqItem from '@/components/FaqItem';
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-rose-50 text-gray-800 flex flex-col font-sans">
+    <div className="min-h-screen bg-gradient-to-br from-pink-50 via-white to-amber-50 text-gray-800 flex flex-col font-sans">
       <LandingAnalytics />
 
       {/* Navbar */}
       <header className="max-w-6xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="w-10 h-10 rounded-2xl bg-indigo-600 flex items-center justify-center text-white shadow-md shadow-indigo-150">
+          <div className="w-10 h-10 rounded-2xl bg-pink-600 flex items-center justify-center text-white shadow-md shadow-pink-200">
             <Heart className="w-5 h-5 fill-current" />
           </div>
           <span className="font-extrabold text-xl tracking-tight text-gray-900">
-            Recado<span className="text-indigo-600">Surpresa</span>
+            Recado<span className="text-pink-600">Surpresa</span>
           </span>
         </div>
         <Link
           href="/criar"
-          className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold transition-all shadow-md shadow-indigo-100 hover:scale-[1.02] active:scale-95"
+          className="px-5 py-2.5 rounded-xl bg-pink-600 hover:bg-pink-700 text-white text-sm font-bold transition-all shadow-md shadow-pink-200 hover:scale-[1.02] active:scale-95"
         >
           Criar presente
         </Link>
       </header>
 
-      {/* Hero — entrada escalonada ao carregar (Fase 8) */}
-      <section className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-12 pb-20 flex-1 flex flex-col items-center justify-center text-center">
-        <div
-          className="animate-slide-in inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-rose-100 text-rose-600 text-xs font-bold uppercase tracking-wider mb-6"
-          style={{ animationFillMode: 'backwards' }}
-        >
-          <Heart className="w-3.5 h-3.5 fill-current" />
-          <span>Dia dos Pais — 09 de agosto</span>
-        </div>
+      {/* Hero — entrada escalonada ao carregar (Fase 8) + visual do produto (Fase 9) */}
+      <section className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-12 pb-20 flex-1 w-full">
+        <div className="grid lg:grid-cols-2 gap-12 items-center">
+          <div className="flex flex-col items-center lg:items-start text-center lg:text-left">
+            <div
+              className="animate-slide-in inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-pink-100 text-pink-600 text-xs font-bold uppercase tracking-wider mb-6"
+              style={{ animationFillMode: 'backwards' }}
+            >
+              <Heart className="w-3.5 h-3.5 fill-current" />
+              <span>Dia dos Pais — 09 de agosto</span>
+            </div>
 
-        <h1
-          className="animate-slide-in text-4xl sm:text-6xl font-black text-gray-950 tracking-tight leading-none max-w-4xl"
-          style={{ animationDelay: '100ms', animationFillMode: 'backwards' }}
-        >
-          Não sabe o que dar pro seu pai? <span className="text-indigo-600">Claro que não sabe.</span>
-        </h1>
-        <p
-          className="animate-slide-in mt-6 text-lg sm:text-xl text-gray-600 max-w-2xl leading-relaxed"
-          style={{ animationDelay: '200ms', animationFillMode: 'backwards' }}
-        >
-          Presente não é sobre objeto. Responda algumas perguntas sobre vocês dois, adicione
-          fotos — e a gente transforma isso numa página que ele desbloqueia escaneando um QR
-          code. No Dia dos Pais, na hora certa.
-        </p>
+            <h1
+              className="animate-slide-in text-4xl sm:text-6xl font-black text-gray-950 tracking-tight leading-none max-w-xl"
+              style={{ animationDelay: '100ms', animationFillMode: 'backwards' }}
+            >
+              Não sabe o que dar pro seu pai? <span className="text-pink-600">Claro que não sabe.</span>
+            </h1>
+            <p
+              className="animate-slide-in mt-6 text-lg sm:text-xl text-gray-600 max-w-xl leading-relaxed"
+              style={{ animationDelay: '200ms', animationFillMode: 'backwards' }}
+            >
+              Presente não é sobre objeto. Responda algumas perguntas sobre vocês dois, adicione
+              fotos — e a gente transforma isso numa página que ele desbloqueia escaneando um QR
+              code. No Dia dos Pais, na hora certa.
+            </p>
 
-        <div
-          className="animate-slide-in mt-10 flex flex-col sm:flex-row gap-4 w-full sm:w-auto"
-          style={{ animationDelay: '300ms', animationFillMode: 'backwards' }}
-        >
-          <Link
-            href="/criar"
-            className="py-4 px-8 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold transition-all shadow-lg shadow-indigo-150 flex items-center justify-center gap-2 group hover:scale-[1.03] active:scale-95"
+            <div
+              className="animate-slide-in mt-10 flex flex-col sm:flex-row gap-4 w-full sm:w-auto"
+              style={{ animationDelay: '300ms', animationFillMode: 'backwards' }}
+            >
+              <Link
+                href="/criar"
+                className="py-4 px-8 rounded-2xl bg-pink-600 hover:bg-pink-700 text-white font-extrabold transition-all shadow-lg shadow-pink-200 flex items-center justify-center gap-2 group hover:scale-[1.03] active:scale-95"
+              >
+                <span>Montar o presente — {PRECO_UNICO_FORMATADO}</span>
+                <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+              </Link>
+            </div>
+
+            <p
+              className="animate-slide-in mt-4 text-sm text-gray-500 font-medium"
+              style={{ animationDelay: '380ms', animationFillMode: 'backwards' }}
+            >
+              Menos que uma meia. Infinitamente mais memorável.
+            </p>
+
+            <div
+              className="animate-slide-in mt-6 flex flex-wrap justify-center lg:justify-start items-center gap-6 text-xs text-gray-400 font-semibold"
+              style={{ animationDelay: '450ms', animationFillMode: 'backwards' }}
+            >
+              <div className="flex items-center gap-1">
+                <Check className="w-4 h-4 text-emerald-500 stroke-[3px]" />
+                <span>Sem apps para instalar</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <Check className="w-4 h-4 text-emerald-500 stroke-[3px]" />
+                <span>Pix — liberação na hora</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <Check className="w-4 h-4 text-emerald-500 stroke-[3px]" />
+                <span>Prévia antes de pagar</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Card decorativo — mesma identidade visual do tema clássico do presente (Fase 9) */}
+          <div
+            className="animate-slide-in hidden lg:flex justify-center"
+            style={{ animationDelay: '150ms', animationFillMode: 'backwards' }}
           >
-            <span>Montar o presente — {PRECO_UNICO_FORMATADO}</span>
-            <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-          </Link>
-        </div>
-
-        <p
-          className="animate-slide-in mt-4 text-sm text-gray-500 font-medium"
-          style={{ animationDelay: '380ms', animationFillMode: 'backwards' }}
-        >
-          Menos que uma meia. Infinitamente mais memorável.
-        </p>
-
-        <div
-          className="animate-slide-in mt-6 flex items-center gap-6 text-xs text-gray-400 font-semibold"
-          style={{ animationDelay: '450ms', animationFillMode: 'backwards' }}
-        >
-          <div className="flex items-center gap-1">
-            <Check className="w-4 h-4 text-emerald-500 stroke-[3px]" />
-            <span>Sem apps para instalar</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <Check className="w-4 h-4 text-emerald-500 stroke-[3px]" />
-            <span>Pix — liberação na hora</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <Check className="w-4 h-4 text-emerald-500 stroke-[3px]" />
-            <span>Prévia antes de pagar</span>
+            <div className="animate-float w-full max-w-xs">
+              <div className="bg-[#FAF8F5] border border-[#E5E0D5] p-6 rounded-3xl shadow-2xl shadow-pink-100 font-serif text-[#2C2A27] -rotate-2">
+                <div className="border border-[#D1C9BA] p-5 rounded-2xl text-center space-y-4">
+                  <div className="text-[#8C7A5C] text-xs tracking-widest uppercase">Com amor para</div>
+                  <div className="text-2xl">Seu Pai</div>
+                  <div className="w-10 h-px bg-[#8C7A5C] mx-auto" />
+                  <p className="text-sm italic text-[#3A3530] leading-relaxed">
+                    &quot;Aquela frase que só ele diz.&quot;
+                  </p>
+                  <div className="pt-2">
+                    <Heart className="w-4 h-4 text-red-800/70 mx-auto fill-current" />
+                    <div className="text-[10px] text-[#8C7A5C] tracking-wider uppercase mt-1">
+                      Feliz Dia dos Pais
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -119,7 +148,7 @@ export default function Home() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             <ScrollReveal atrasoMs={0}>
               <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100 text-center space-y-4 h-full">
-                <div className="w-12 h-12 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center mx-auto">
+                <div className="w-12 h-12 rounded-xl bg-pink-100 text-pink-700 flex items-center justify-center mx-auto">
                   <MessageCircleQuestion className="w-6 h-6" />
                 </div>
                 <h3 className="font-bold text-gray-900 text-lg">1. Responda</h3>
@@ -132,7 +161,7 @@ export default function Home() {
 
             <ScrollReveal atrasoMs={80}>
               <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100 text-center space-y-4 h-full">
-                <div className="w-12 h-12 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center mx-auto">
+                <div className="w-12 h-12 rounded-xl bg-pink-100 text-pink-700 flex items-center justify-center mx-auto">
                   <Sparkles className="w-6 h-6" />
                 </div>
                 <h3 className="font-bold text-gray-900 text-lg">2. Veja pronto</h3>
@@ -145,7 +174,7 @@ export default function Home() {
 
             <ScrollReveal atrasoMs={160}>
               <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100 text-center space-y-4 h-full">
-                <div className="w-12 h-12 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center mx-auto">
+                <div className="w-12 h-12 rounded-xl bg-pink-100 text-pink-700 flex items-center justify-center mx-auto">
                   <QrCode className="w-6 h-6" />
                 </div>
                 <h3 className="font-bold text-gray-900 text-lg">3. Entregue o mistério</h3>
@@ -158,7 +187,7 @@ export default function Home() {
 
             <ScrollReveal atrasoMs={240}>
               <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100 text-center space-y-4 h-full">
-                <div className="w-12 h-12 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center mx-auto">
+                <div className="w-12 h-12 rounded-xl bg-pink-100 text-pink-700 flex items-center justify-center mx-auto">
                   <CalendarHeart className="w-6 h-6" />
                 </div>
                 <h3 className="font-bold text-gray-900 text-lg">4. A surpresa acontece</h3>
@@ -184,7 +213,7 @@ export default function Home() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           <ScrollReveal atrasoMs={0}>
             <div className="flex gap-4">
-              <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center flex-shrink-0">
+              <div className="w-10 h-10 rounded-xl bg-pink-100 text-pink-700 flex items-center justify-center flex-shrink-0">
                 <QrCode className="w-5 h-5" />
               </div>
               <div>
@@ -199,7 +228,7 @@ export default function Home() {
 
           <ScrollReveal atrasoMs={80}>
             <div className="flex gap-4">
-              <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center flex-shrink-0">
+              <div className="w-10 h-10 rounded-xl bg-pink-100 text-pink-700 flex items-center justify-center flex-shrink-0">
                 <CalendarHeart className="w-5 h-5" />
               </div>
               <div>
@@ -214,7 +243,7 @@ export default function Home() {
 
           <ScrollReveal atrasoMs={160}>
             <div className="flex gap-4">
-              <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center flex-shrink-0">
+              <div className="w-10 h-10 rounded-xl bg-pink-100 text-pink-700 flex items-center justify-center flex-shrink-0">
                 <Gift className="w-5 h-5" />
               </div>
               <div>
@@ -266,7 +295,7 @@ export default function Home() {
           <div className="text-center mt-10">
             <Link
               href="/criar"
-              className="inline-flex items-center gap-2 py-4 px-8 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold transition-all shadow-lg shadow-indigo-150 hover:scale-[1.03] active:scale-95"
+              className="inline-flex items-center gap-2 py-4 px-8 rounded-2xl bg-pink-600 hover:bg-pink-700 text-white font-extrabold transition-all shadow-lg shadow-pink-200 hover:scale-[1.03] active:scale-95"
             >
               <span>Criar o presente agora — {PRECO_UNICO_FORMATADO}</span>
               <ArrowRight className="w-5 h-5" />
@@ -280,7 +309,7 @@ export default function Home() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-md">
+              <div className="w-8 h-8 rounded-xl bg-pink-600 flex items-center justify-center text-white shadow-md">
                 <Heart className="w-4 h-4 fill-current" />
               </div>
               <span className="font-extrabold text-lg text-white">RecadoSurpresa</span>

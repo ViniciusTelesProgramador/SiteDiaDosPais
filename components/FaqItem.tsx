@@ -22,7 +22,7 @@ export default function FaqItem({ pergunta, resposta }: { pergunta: string; resp
       >
         <span>{pergunta}</span>
         <Plus
-          className={`w-4 h-4 flex-shrink-0 text-indigo-400 transition-transform duration-300 ${
+          className={`w-4 h-4 flex-shrink-0 text-pink-400 transition-transform duration-300 ${
             aberto ? 'rotate-45' : ''
           }`}
         />

@@ -457,6 +457,34 @@ console.
 
 ---
 
+## Fase 9 — Identidade visual premium da LP (aprovada em 20/07/2026)
+
+> Origem: depois de ver a Fase 8 ao vivo, o Pedro achou que "não mudou
+> nada" — porque um screenshot parado não mostra animação, e a Fase 8
+> deliberadamente não tinha mexido em cor/layout (foi escolha dele na
+> hora). Ele então aprovou ir além: mudar a paleta e adicionar um elemento
+> visual de destaque no hero. Isso reordena o roadmap: a "Fase 9
+> (formulário)" e "Fase 10 (entregável)" do plano anterior viram **Fase
+> 10** e **Fase 11**, ainda não iniciadas.
+
+- **Paleta:** indigo → rosa quente (`pink-600`/`#DB2777`, igual ao dado da
+  skill `ui-ux-pro-max` pra categoria Wedding/Event Planning) + creme/
+  dourado no fundo. Troca sistemática em `app/page.tsx` e
+  `components/FaqItem.tsx`.
+- **Hero em duas colunas:** texto (mesma entrada escalonada da Fase 8) +
+  card decorativo à direita (`lg:` só, escondido no mobile) que replica em
+  miniatura o tema clássico real do `PageRenderer` — mostra o produto de
+  verdade em vez de imagem de banco. Flutuação contínua sutil
+  (`@keyframes float`, `app/globals.css`), entrando na mesma regra
+  `prefers-reduced-motion` da Fase 8.
+- **Verificação real:** Playwright confirmou a cor do CTA (`rgb(219, 39,
+  119)` = `#DB2777`), o card do hero presente, zero scroll horizontal no
+  mobile (390px), FAQ/scroll-reveal da Fase 8 intactos, e a flutuação
+  corretamente neutralizada com `prefers-reduced-motion: reduce`
+  (duração cai pra `0.01ms`). Zero erros de console.
+
+---
+
 ## Decisões que dependem do dono do produto (não são código)
 
 Estas travam tarefas se atrasarem — todas têm lead time externo (DNS, verificação de conta, etc.):
