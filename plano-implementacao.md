@@ -515,6 +515,44 @@ console.
 
 ---
 
+## Fase 12 — Reinvenção do entregável: carta lacrada + mensagem de voz (aprovada em 20/07/2026)
+
+> Origem: Pedro foi direto — as Fases 8/9/11 foram "mudanças pequenas que
+> não impactam em muita coisa". O pedido foi mudar **a forma** do
+> entregável, porque o valor percebido está baixo demais pra alguém pagar.
+> "Pense grande e faça maior ainda." Duas mudanças estruturais, as maiores
+> alavancas ainda não puxadas no produto.
+
+### Parte A — Cerimônia vira "abrir uma carta lacrada"
+- Substituiu as fases `convite`/`nome` de `PublicPageClient.tsx` por:
+  `envelope` → `quebrando` (selo de cera quebra) → `abrindo` (aba dobra
+  pra trás via `rotateX` + `backface-visibility: hidden`, sem precisar
+  simular o verso) → `carta` (card sobe de dentro do envelope já mostrando
+  o nome) → `conteudo`.
+- Tudo em CSS puro (`app/globals.css`: `seal-breathe`, `selo-quebra`,
+  `aba-abrindo`, `carta-sobe`), sem lib nova, somado à regra
+  `prefers-reduced-motion` já existente.
+- Validado visualmente com Playwright (screenshot de cada etapa) — sem
+  nenhum artefato visual na rotação 3D da aba.
+
+### Parte B — Mensagem de voz do comprador
+- A própria `visao-produto.md` (§4) já identificava isso como a maior
+  alavanca emocional ainda não construída.
+- **Dados:** `paginas.audio_url` + bucket `audios` no Storage (mesmo
+  modelo de segurança do bucket `fotos`).
+- **Gravação:** `components/GravadorAudio.tsx` (novo) — `MediaRecorder`,
+  até `MAX_AUDIO_SEGUNDOS` (30s), prévia com regravar; opcional, erro de
+  permissão nunca bloqueia o formulário.
+- **Reprodução:** `components/VoiceMessagePlayer.tsx` (novo) — `<audio>`
+  nativo, sem iframe, sem autoplay; vira o **primeiro slide** do
+  storytime quando há áudio ("Antes de tudo").
+- **Verificação real:** fluxo completo via Playwright com microfone falso
+  do Chromium (`--use-fake-device-for-media-stream`) — gravação, upload
+  (IndexedDB mock), cerimônia completa da carta, slide de voz tocando/
+  pausando. Zero erros de console.
+
+---
+
 ## Decisões que dependem do dono do produto (não são código)
 
 Estas travam tarefas se atrasarem — todas têm lead time externo (DNS, verificação de conta, etc.):

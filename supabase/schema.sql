@@ -46,6 +46,8 @@ create table if not exists public.paginas (
   lembrete_enviado_em timestamptz,
   -- trilha do YouTube (Fase 6): só o ID de 11 caracteres, nunca a URL crua
   musica_youtube_id text,
+  -- mensagem de voz do comprador (Fase 12): URL pública no bucket "audios"
+  audio_url text,
   criado_em timestamptz not null default now()
 );
 
@@ -98,6 +100,7 @@ alter table public.paginas add column if not exists reacao_em timestamptz;
 alter table public.paginas add column if not exists lembrete_enviado_em timestamptz;
 alter table public.pagamentos add column if not exists criado_em timestamptz not null default now();
 alter table public.paginas add column if not exists musica_youtube_id text;
+alter table public.paginas add column if not exists audio_url text;
 
 -- mensagem passa a ser opcional (blocos podem substituí-la)
 alter table public.paginas alter column mensagem drop not null;
@@ -190,6 +193,16 @@ begin
       for select to public
       using (bucket_id = 'fotos');
   end if;
+
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'storage' and tablename = 'objects'
+      and policyname = 'Allow public read access to audios'
+  ) then
+    create policy "Allow public read access to audios" on storage.objects
+      for select to public
+      using (bucket_id = 'audios');
+  end if;
 end $$;
 
 -- ----------------------------------------------------------------------------
@@ -214,4 +227,12 @@ revoke execute on function public.incrementar_visualizacao(text) from anon, auth
 -- ----------------------------------------------------------------------------
 insert into storage.buckets (id, name, public)
 values ('fotos', 'fotos', true)
+on conflict (id) do nothing;
+
+-- ----------------------------------------------------------------------------
+-- Bucket de áudios (Fase 12 — mensagem de voz do comprador). Mesmo modelo
+-- de segurança do bucket de fotos: leitura pública, upload só service role.
+-- ----------------------------------------------------------------------------
+insert into storage.buckets (id, name, public)
+values ('audios', 'audios', true)
 on conflict (id) do nothing;

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { isSupabaseConfigured } from '@/lib/supabase';
@@ -18,6 +18,7 @@ import {
 } from '@/lib/config';
 import type { Bloco, Midia } from '@/lib/types';
 import PageRenderer from '@/components/PageRenderer';
+import GravadorAudio from '@/components/GravadorAudio';
 import {
   Heart,
   Upload,
@@ -55,6 +56,7 @@ export default function CriarPresente() {
   const [tema, setTema] = useState<TemaId>('classico');
   const [revelarModo, setRevelarModo] = useState<'diadospais' | 'agora'>('diadospais');
   const [musicaUrl, setMusicaUrl] = useState('');
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [aceitouTermos, setAceitouTermos] = useState(false);
 
   // ---- Estado de UI ----
@@ -84,6 +86,10 @@ export default function CriarPresente() {
   }));
 
   const musicaYoutubeId = musicaUrl.trim() ? extrairYoutubeId(musicaUrl) : null;
+  const audioPreviewUrl = useMemo(
+    () => (audioBlob ? URL.createObjectURL(audioBlob) : null),
+    [audioBlob]
+  );
 
   // ---- Fotos (com compressão — RF09/T2.2) ----
   const handleFotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -145,7 +151,7 @@ export default function CriarPresente() {
     setFotos((prev) => prev.map((f, i) => (i === index ? { ...f, legenda } : f)));
   };
 
-  const fileToBase64 = (file: File): Promise<string> =>
+  const fileToBase64 = (file: Blob): Promise<string> =>
     new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.readAsDataURL(file);
@@ -209,6 +215,7 @@ export default function CriarPresente() {
         // Modo de simulação local (apenas desenvolvimento)
         console.log('Supabase não configurado. Rodando em modo de simulação...');
         const base64Fotos = await Promise.all(fotos.map((f) => fileToBase64(f.file)));
+        const base64Audio = audioBlob ? await fileToBase64(audioBlob) : null;
         const mockId = crypto.randomUUID();
         await saveDraftToIndexedDB(mockId, {
           id: mockId,
@@ -225,6 +232,7 @@ export default function CriarPresente() {
           plano: 'basico',
           revelar_em: revelarEm,
           musica_youtube_id: musicaYoutubeId,
+          audio_url: base64Audio,
           criado_em: new Date().toISOString(),
           isMock: true,
         });
@@ -249,6 +257,7 @@ export default function CriarPresente() {
         })
       );
       fotos.forEach((f, i) => formData.append(`foto_${i}`, f.file));
+      if (audioBlob) formData.append('audio', audioBlob, 'mensagem-de-voz.webm');
 
       const response = await fetch('/api/paginas', { method: 'POST', body: formData });
       const data = await response.json();
@@ -716,6 +725,9 @@ export default function CriarPresente() {
                   )}
                 </div>
 
+                {/* Mensagem de voz (Fase 12, opcional) */}
+                <GravadorAudio onAudioPronto={setAudioBlob} />
+
                 {/* Termos (T3.1) */}
                 <label className="flex items-start gap-3 cursor-pointer select-none">
                   <input
@@ -811,6 +823,7 @@ export default function CriarPresente() {
                   midias: midiasPreview,
                   tema,
                   musicaYoutubeId,
+                  audioUrl: audioPreviewUrl,
                 }}
               />
             </div>

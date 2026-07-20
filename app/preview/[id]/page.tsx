@@ -768,6 +768,7 @@ export default function PreviewPagina() {
             midias: normalizarMidias(draft.midias),
             tema: normalizarTema(draft.tema),
             musicaYoutubeId: draft.musica_youtube_id,
+            audioUrl: draft.audio_url,
           }}
         />
       </main>

@@ -39,6 +39,8 @@ export interface DadosPublicos {
   contribuicoes?: Contribuicao[];
   /** ID do vídeo do YouTube (Fase 6) — null/undefined = sem música. */
   musica_youtube_id?: string | null;
+  /** URL da mensagem de voz do comprador (Fase 12) — null = sem áudio. */
+  audio_url?: string | null;
 }
 
 interface PublicPageClientProps {
@@ -47,7 +49,7 @@ interface PublicPageClientProps {
   naoEncontrada?: boolean;
 }
 
-type FaseCerimonia = 'convite' | 'nome' | 'conteudo';
+type FaseCerimonia = 'envelope' | 'quebrando' | 'abrindo' | 'carta' | 'conteudo';
 
 export default function PublicPageClient({
   slug,
@@ -58,8 +60,8 @@ export default function PublicPageClient({
   const [loading, setLoading] = useState(!initialData && !naoEncontrada);
   const [error, setError] = useState<string | null>(null);
 
-  // Cerimônia de abertura (T2.1)
-  const [fase, setFase] = useState<FaseCerimonia>('convite');
+  // Cerimônia de abertura (T2.1, Fase 12 — carta lacrada)
+  const [fase, setFase] = useState<FaseCerimonia>('envelope');
   const [conteudoVisivel, setConteudoVisivel] = useState(false);
 
   // Reação (T2.7/Fase 4): emoji de 1 toque + texto livre opcional depois
@@ -90,6 +92,7 @@ export default function PublicPageClient({
             tema: foundDraft.tema,
             revelar_em: foundDraft.revelar_em,
             musica_youtube_id: foundDraft.musica_youtube_id,
+            audio_url: foundDraft.audio_url,
             isMock: true,
           });
         } else {
@@ -107,13 +110,20 @@ export default function PublicPageClient({
   }, [slug, initialData, naoEncontrada]);
 
   const abrirPresente = () => {
-    // Cerimônia: toque -> nome sozinho por ~1.8s -> conteúdo com fade
-    setFase('nome');
+    // Cerimônia (Fase 12): selo quebra -> aba abre -> carta sobe (mostra o
+    // nome) -> conteúdo com fade. Durações batem com as keyframes de
+    // app/globals.css (selo-quebra 450ms, aba-abrindo 700ms).
+    setFase('quebrando');
     setTimeout(() => {
-      setFase('conteudo');
-      // pequeno atraso para o fade-in do conteúdo
-      setTimeout(() => setConteudoVisivel(true), 60);
-    }, 1800);
+      setFase('abrindo');
+      setTimeout(() => {
+        setFase('carta');
+        setTimeout(() => {
+          setFase('conteudo');
+          setTimeout(() => setConteudoVisivel(true), 60);
+        }, 1600);
+      }, 750);
+    }, 450);
   };
 
   const enviarReacao = async (emoji: string) => {
@@ -239,67 +249,110 @@ export default function PublicPageClient({
     : 'bg-gradient-to-tr from-[#E6F4F1] via-[#F3FAFB] to-[#FDF6E2] text-[#1E302E] font-sans';
 
   // ----------------------------------------------------
-  // CERIMÔNIA — convite: "toque para abrir o presente"
+  // CERIMÔNIA (Fase 12) — carta lacrada: envelope -> selo quebra -> aba
+  // abre -> carta sobe. Substitui o antigo "toque no presente" genérico.
   // ----------------------------------------------------
-  if (fase === 'convite') {
+  if (fase === 'envelope' || fase === 'quebrando' || fase === 'abrindo') {
+    const corSelo = classico ? '#7A2E2E' : '#0F766E';
     return (
       <div className={`min-h-screen flex items-center justify-center px-4 ${fundo}`}>
-        <button
-          onClick={abrirPresente}
-          className="text-center space-y-8 py-16 max-w-sm mx-auto group cursor-pointer"
-        >
-          <div className="relative w-24 h-24 mx-auto">
+        <div className="text-center space-y-8">
+          <div className="relative mx-auto" style={{ width: 260, height: 172, perspective: '1200px' }}>
+            {/* Corpo do envelope, com o nome "endereçado" */}
             <div
-              aria-hidden
-              className={`animate-gift-pulse absolute inset-0 rounded-full ${
-                classico ? 'bg-[#8C7A5C]/40' : 'bg-emerald-400/40'
-              }`}
-            />
-            <div
-              className={`relative w-24 h-24 rounded-full flex items-center justify-center text-4xl transition-transform duration-500 group-hover:scale-105 group-active:scale-95 shadow-lg ${
-                classico ? 'bg-[#FAF8F5] border border-[#D1C9BA]' : 'bg-white border border-teal-100'
+              className={`absolute inset-0 rounded-lg border shadow-xl overflow-hidden ${
+                classico ? 'bg-[#FAF8F5] border-[#D1C9BA]' : 'bg-white border-teal-100'
               }`}
             >
-              🎁
+              <div className="absolute inset-x-0 bottom-6 text-center px-4">
+                <div
+                  className={`text-[10px] tracking-[0.3em] uppercase ${
+                    classico ? 'text-[#8C7A5C]' : 'text-emerald-700/70 font-bold'
+                  }`}
+                >
+                  Para
+                </div>
+                <div
+                  className={`text-lg leading-tight ${
+                    classico ? 'font-serif italic text-[#1A1817]' : 'font-black text-teal-950'
+                  }`}
+                >
+                  {data.nome_destinatario}
+                </div>
+              </div>
             </div>
-          </div>
-          <div className="space-y-3">
-            <h1
-              className={`text-2xl sm:text-3xl leading-snug ${
-                classico ? 'font-normal' : 'font-extrabold text-teal-950'
+
+            {/* Aba do envelope — dobra pra trás ao abrir (backface-visibility
+                some no meio do giro, sem precisar simular o verso). */}
+            <div
+              className={`absolute inset-x-0 top-0 origin-top ${
+                fase === 'abrindo' ? 'animate-aba-abrindo' : ''
               }`}
-            >
-              Isso aqui foi feito pra você. Só pra você.
-            </h1>
+              style={{
+                height: '55%',
+                clipPath: 'polygon(0 0, 100% 0, 50% 100%)',
+                background: classico ? '#F0EAD9' : '#F0FDFA',
+                border: classico ? '1px solid #D1C9BA' : '1px solid #99F6E4',
+                zIndex: 5,
+              }}
+            />
+
+            {/* Selo de cera — toque abre a carta */}
+            {fase !== 'abrindo' && (
+              <button
+                type="button"
+                onClick={fase === 'envelope' ? abrirPresente : undefined}
+                aria-label="Abrir a carta"
+                className={`absolute left-1/2 top-[46%] -translate-x-1/2 -translate-y-1/2 w-14 h-14 rounded-full shadow-lg z-10 flex items-center justify-center ${
+                  fase === 'quebrando' ? 'animate-selo-quebra' : 'animate-seal-breathe cursor-pointer'
+                }`}
+                style={{
+                  background: `radial-gradient(circle at 35% 30%, ${corSelo}dd, ${corSelo})`,
+                  boxShadow:
+                    'inset 0 2px 4px rgba(255,255,255,0.3), inset 0 -3px 6px rgba(0,0,0,0.35), 0 6px 14px rgba(0,0,0,0.25)',
+                }}
+              >
+                <span className="text-white/90 text-lg leading-none">❤</span>
+              </button>
+            )}
+          </div>
+
+          {fase === 'envelope' && (
             <p
-              className={`text-sm tracking-wide ${
-                classico ? 'text-[#8C7A5C] uppercase tracking-widest' : 'text-teal-700/70 font-bold uppercase'
+              className={`text-sm tracking-widest uppercase ${
+                classico ? 'text-[#8C7A5C]' : 'text-teal-700/70 font-bold'
               }`}
             >
-              Toque para abrir
+              Toque no selo para abrir
             </p>
-          </div>
-        </button>
+          )}
+        </div>
       </div>
     );
   }
 
   // ----------------------------------------------------
-  // CERIMÔNIA — nome sozinho por ~1.8s (reconhecimento pessoal)
+  // CERIMÔNIA — a carta sobe do envelope e mostra o nome
   // ----------------------------------------------------
-  if (fase === 'nome') {
+  if (fase === 'carta') {
     return (
       <div className={`min-h-screen flex items-center justify-center px-4 ${fundo}`}>
-        <div className="text-center animate-fadeIn">
+        <div
+          className={`animate-carta-sobe text-center py-10 px-8 rounded-2xl shadow-2xl max-w-sm w-full ${
+            classico
+              ? 'bg-[#FAF8F5] border border-[#D1C9BA] font-serif'
+              : 'bg-white border border-teal-100 font-sans'
+          }`}
+        >
           <div
-            className={`text-sm tracking-widest uppercase mb-4 ${
+            className={`text-xs tracking-widest uppercase mb-3 ${
               classico ? 'text-[#8C7A5C]' : 'text-emerald-700/70 font-bold'
             }`}
           >
             Para você,
           </div>
           <h1
-            className={`text-4xl sm:text-5xl leading-tight ${
+            className={`text-3xl sm:text-4xl leading-tight ${
               classico ? 'font-normal text-[#1A1817]' : 'font-black text-teal-950'
             }`}
           >
@@ -329,6 +382,7 @@ export default function PublicPageClient({
             tema: normalizarTema(data.tema),
             contribuicoes: data.contribuicoes,
             musicaYoutubeId: data.musica_youtube_id,
+            audioUrl: data.audio_url,
             slugPublico: data.slug,
           }}
         />

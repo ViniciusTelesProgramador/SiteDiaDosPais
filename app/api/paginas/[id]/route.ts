@@ -19,7 +19,7 @@ export async function GET(
   const { data, error } = await supabaseAdmin
     .from('paginas')
     .select(
-      'id, slug, email_comprador, nome_destinatario, mensagem, blocos, midias, tema, plano, pago, revelar_em, reacao_emoji, reacao_texto, musica_youtube_id, criado_em'
+      'id, slug, email_comprador, nome_destinatario, mensagem, blocos, midias, tema, plano, pago, revelar_em, reacao_emoji, reacao_texto, musica_youtube_id, audio_url, criado_em'
     )
     .eq('id', params.id)
     .single();

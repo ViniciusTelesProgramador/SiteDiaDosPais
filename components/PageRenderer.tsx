@@ -7,6 +7,7 @@ import { ORDEM_NARRATIVA, BLOCO_CLIMAX } from '@/lib/config';
 import { ordenarBlocosNarrativa, type Bloco, type Midia, type Contribuicao } from '@/lib/types';
 import MusicPlayer from './MusicPlayer';
 import ShareStoryButton from './ShareStoryButton';
+import VoiceMessagePlayer from './VoiceMessagePlayer';
 
 /**
  * Renderização visual da página do presente — componente único usado pelo
@@ -34,6 +35,8 @@ export interface ConteudoPagina {
   contribuicoes?: Contribuicao[] | null;
   /** ID do vídeo do YouTube (Fase 6) — null/undefined = sem música. */
   musicaYoutubeId?: string | null;
+  /** URL da mensagem de voz do comprador (Fase 12) — null = sem áudio. */
+  audioUrl?: string | null;
   /**
    * Slug da página pública (Fase 7) — só presente em /p/[slug]. Controla o
    * botão de compartilhar nos Stories: sem slug (prévia ao vivo, rascunho
@@ -256,6 +259,23 @@ export default function PageRenderer({ conteudo }: { conteudo: ConteudoPagina })
 
   // ---- Monta a lista de slides (Fase 6 — modo storytime) ----
   const slides: { key: string; node: React.ReactNode }[] = [];
+  if (conteudo.audioUrl) {
+    slides.push({
+      key: 'voz',
+      node: (
+        <div className="space-y-4">
+          <div
+            className={`text-xs tracking-[0.2em] uppercase text-center ${
+              classico ? 'text-[#8C7A5C]' : 'text-emerald-700 font-extrabold'
+            }`}
+          >
+            Antes de tudo
+          </div>
+          <VoiceMessagePlayer audioUrl={conteudo.audioUrl} classico={classico} />
+        </div>
+      ),
+    });
+  }
   abertura.forEach((bloco) => {
     slides.push({
       key: bloco.pergunta_id,

@@ -121,3 +121,7 @@ export const MAX_CONTRIBUICOES = 6;
 export const MAX_CONTRIBUICAO_TEXTO = 400;
 export const MAX_NOME_CONTRIBUIDOR = 60;
 export const MAX_RELACAO_CONTRIBUIDOR = 40;
+
+/** Mensagem de voz do comprador (Fase 12). */
+export const MAX_AUDIO_SEGUNDOS = 30;
+export const MAX_AUDIO_MB = 5;

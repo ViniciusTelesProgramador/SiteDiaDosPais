@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabaseAdmin';
 import { isEmailValido, extrairYoutubeId } from '@/lib/utils';
-import { MIN_BLOCOS, PERGUNTAS_GUIADAS } from '@/lib/config';
+import { MIN_BLOCOS, PERGUNTAS_GUIADAS, MAX_AUDIO_MB } from '@/lib/config';
 import type { Bloco, Midia } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -122,6 +122,14 @@ export async function POST(req: NextRequest) {
       ? extrairYoutubeId(payload.musica_youtube_url)
       : null;
 
+    // ---- Mensagem de voz (Fase 12, opcional — falha aqui nunca bloqueia a criação) ----
+    const audio = formData.get('audio');
+    const audioValido =
+      audio instanceof File &&
+      audio.size > 0 &&
+      audio.type.startsWith('audio/') &&
+      audio.size <= MAX_AUDIO_MB * 1024 * 1024;
+
     const legendas = Array.isArray(payload.legendas) ? payload.legendas : [];
     const pageId = crypto.randomUUID();
 
@@ -157,6 +165,26 @@ export async function POST(req: NextRequest) {
       midias.push(legenda ? { url: publicUrlData.publicUrl, legenda } : { url: publicUrlData.publicUrl });
     }
 
+    // ---- Upload do áudio (opcional; falha aqui não bloqueia a criação) ----
+    let audioUrl: string | null = null;
+    if (audioValido && audio instanceof File) {
+      const filePath = `${pageId}/${crypto.randomUUID()}.webm`;
+      const { error: audioError } = await supabaseAdmin.storage
+        .from('audios')
+        .upload(filePath, await audio.arrayBuffer(), {
+          contentType: audio.type,
+          cacheControl: '31536000',
+          upsert: false,
+        });
+
+      if (audioError) {
+        console.error('[Paginas] Erro no upload do áudio (seguindo sem ele):', audioError);
+      } else {
+        const { data: publicUrlData } = supabaseAdmin.storage.from('audios').getPublicUrl(filePath);
+        audioUrl = publicUrlData.publicUrl;
+      }
+    }
+
     // ---- Insere o rascunho ----
     const { error: dbError } = await supabaseAdmin.from('paginas').insert({
       id: pageId,
@@ -171,6 +199,7 @@ export async function POST(req: NextRequest) {
       revelar_em: revelarEm,
       expira_em: expiraEm.toISOString(),
       musica_youtube_id: musicaYoutubeId,
+      audio_url: audioUrl,
     });
 
     if (dbError) {
