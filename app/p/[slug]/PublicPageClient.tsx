@@ -41,6 +41,8 @@ export interface DadosPublicos {
   musica_youtube_id?: string | null;
   /** URL da mensagem de voz do comprador (Fase 12) — null = sem áudio. */
   audio_url?: string | null;
+  /** URL da mensagem em vídeo do comprador (Fase 14) — null = sem vídeo. */
+  video_url?: string | null;
 }
 
 interface PublicPageClientProps {
@@ -93,6 +95,7 @@ export default function PublicPageClient({
             revelar_em: foundDraft.revelar_em,
             musica_youtube_id: foundDraft.musica_youtube_id,
             audio_url: foundDraft.audio_url,
+            video_url: foundDraft.video_url,
             isMock: true,
           });
         } else {
@@ -383,6 +386,7 @@ export default function PublicPageClient({
             contribuicoes: data.contribuicoes,
             musicaYoutubeId: data.musica_youtube_id,
             audioUrl: data.audio_url,
+            videoUrl: data.video_url,
             slugPublico: data.slug,
           }}
         />

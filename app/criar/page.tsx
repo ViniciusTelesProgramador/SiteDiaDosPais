@@ -18,7 +18,7 @@ import {
 } from '@/lib/config';
 import type { Bloco, Midia } from '@/lib/types';
 import PageRenderer from '@/components/PageRenderer';
-import GravadorAudio from '@/components/GravadorAudio';
+import GravadorMensagem, { type MensagemGravada } from '@/components/GravadorMensagem';
 import {
   Heart,
   Upload,
@@ -58,7 +58,7 @@ export default function CriarPresente() {
   const [tema, setTema] = useState<TemaId>('classico');
   const [revelarModo, setRevelarModo] = useState<'diadospais' | 'agora'>('diadospais');
   const [musicaUrl, setMusicaUrl] = useState('');
-  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const [mensagemGravada, setMensagemGravada] = useState<MensagemGravada>(null);
   const [aceitouTermos, setAceitouTermos] = useState(false);
 
   // ---- Estado de UI ----
@@ -90,8 +90,12 @@ export default function CriarPresente() {
 
   const musicaYoutubeId = musicaUrl.trim() ? extrairYoutubeId(musicaUrl) : null;
   const audioPreviewUrl = useMemo(
-    () => (audioBlob ? URL.createObjectURL(audioBlob) : null),
-    [audioBlob]
+    () => (mensagemGravada?.tipo === 'voz' ? URL.createObjectURL(mensagemGravada.blob) : null),
+    [mensagemGravada]
+  );
+  const videoPreviewUrl = useMemo(
+    () => (mensagemGravada?.tipo === 'video' ? URL.createObjectURL(mensagemGravada.blob) : null),
+    [mensagemGravada]
   );
 
   // ---- Fotos (com compressão — RF09/T2.2) ----
@@ -223,7 +227,10 @@ export default function CriarPresente() {
         // Modo de simulação local (apenas desenvolvimento)
         console.log('Supabase não configurado. Rodando em modo de simulação...');
         const base64Fotos = await Promise.all(fotos.map((f) => fileToBase64(f.file)));
-        const base64Audio = audioBlob ? await fileToBase64(audioBlob) : null;
+        const base64Audio =
+          mensagemGravada?.tipo === 'voz' ? await fileToBase64(mensagemGravada.blob) : null;
+        const base64Video =
+          mensagemGravada?.tipo === 'video' ? await fileToBase64(mensagemGravada.blob) : null;
         const mockId = crypto.randomUUID();
         await saveDraftToIndexedDB(mockId, {
           id: mockId,
@@ -242,6 +249,7 @@ export default function CriarPresente() {
           revelar_em: revelarEm,
           musica_youtube_id: musicaYoutubeId,
           audio_url: base64Audio,
+          video_url: base64Video,
           criado_em: new Date().toISOString(),
           isMock: true,
         });
@@ -267,7 +275,11 @@ export default function CriarPresente() {
         })
       );
       fotos.forEach((f, i) => formData.append(`foto_${i}`, f.file));
-      if (audioBlob) formData.append('audio', audioBlob, 'mensagem-de-voz.webm');
+      if (mensagemGravada?.tipo === 'voz') {
+        formData.append('audio', mensagemGravada.blob, 'mensagem-de-voz.webm');
+      } else if (mensagemGravada?.tipo === 'video') {
+        formData.append('video', mensagemGravada.blob, 'mensagem-de-video.webm');
+      }
 
       const response = await fetch('/api/paginas', { method: 'POST', body: formData });
       const data = await response.json();
@@ -747,7 +759,7 @@ export default function CriarPresente() {
                 </div>
 
                 {/* Mensagem de voz (Fase 12, opcional) */}
-                <GravadorAudio onAudioPronto={setAudioBlob} />
+                <GravadorMensagem onMensagemPronta={setMensagemGravada} />
 
                 {/* Termos (T3.1) */}
                 <label className="flex items-start gap-3 cursor-pointer select-none">
@@ -845,6 +857,7 @@ export default function CriarPresente() {
                   tema,
                   musicaYoutubeId,
                   audioUrl: audioPreviewUrl,
+                  videoUrl: videoPreviewUrl,
                 }}
               />
             </div>

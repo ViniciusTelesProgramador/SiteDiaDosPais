@@ -39,7 +39,7 @@ export default async function Page({ params }: Props) {
   const { data } = await supabaseAdmin
     .from('paginas')
     .select(
-      'id, slug, nome_destinatario, mensagem, blocos, midias, tema, revelar_em, visualizacoes, musica_youtube_id, audio_url'
+      'id, slug, nome_destinatario, mensagem, blocos, midias, tema, revelar_em, visualizacoes, musica_youtube_id, audio_url, video_url'
     )
     .eq('slug', slug)
     .eq('pago', true)
@@ -88,6 +88,7 @@ export default async function Page({ params }: Props) {
     contribuicoes: contribuicoes || [],
     musica_youtube_id: data.musica_youtube_id,
     audio_url: data.audio_url,
+    video_url: data.video_url,
   };
 
   return <PublicPageClient slug={slug} initialData={dadosPublicos} />;

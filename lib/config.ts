@@ -125,3 +125,7 @@ export const MAX_RELACAO_CONTRIBUIDOR = 40;
 /** Mensagem de voz do comprador (Fase 12). */
 export const MAX_AUDIO_SEGUNDOS = 30;
 export const MAX_AUDIO_MB = 5;
+
+/** Mensagem em vídeo do comprador (Fase 14) — alternativa à voz. */
+export const MAX_VIDEO_SEGUNDOS = 30;
+export const MAX_VIDEO_MB = 60;

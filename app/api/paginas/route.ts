@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabaseAdmin';
 import { isEmailValido, extrairYoutubeId } from '@/lib/utils';
-import { MIN_BLOCOS, PERGUNTAS_GUIADAS, MAX_AUDIO_MB } from '@/lib/config';
+import { MIN_BLOCOS, PERGUNTAS_GUIADAS, MAX_AUDIO_MB, MAX_VIDEO_MB } from '@/lib/config';
 import type { Bloco, Midia } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -123,13 +123,20 @@ export async function POST(req: NextRequest) {
       ? extrairYoutubeId(payload.musica_youtube_url)
       : null;
 
-    // ---- Mensagem de voz (Fase 12, opcional — falha aqui nunca bloqueia a criação) ----
+    // ---- Mensagem de voz/vídeo (Fases 12/14, opcional — falha aqui nunca bloqueia a criação) ----
     const audio = formData.get('audio');
     const audioValido =
       audio instanceof File &&
       audio.size > 0 &&
       audio.type.startsWith('audio/') &&
       audio.size <= MAX_AUDIO_MB * 1024 * 1024;
+
+    const video = formData.get('video');
+    const videoValido =
+      video instanceof File &&
+      video.size > 0 &&
+      video.type.startsWith('video/') &&
+      video.size <= MAX_VIDEO_MB * 1024 * 1024;
 
     const legendas = Array.isArray(payload.legendas) ? payload.legendas : [];
     const anos = Array.isArray(payload.anos) ? payload.anos : [];
@@ -193,6 +200,26 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // ---- Upload do vídeo (Fase 14, opcional; falha aqui não bloqueia a criação) ----
+    let videoUrl: string | null = null;
+    if (videoValido && video instanceof File) {
+      const filePath = `${pageId}/${crypto.randomUUID()}.webm`;
+      const { error: videoError } = await supabaseAdmin.storage
+        .from('videos')
+        .upload(filePath, await video.arrayBuffer(), {
+          contentType: video.type,
+          cacheControl: '31536000',
+          upsert: false,
+        });
+
+      if (videoError) {
+        console.error('[Paginas] Erro no upload do vídeo (seguindo sem ele):', videoError);
+      } else {
+        const { data: publicUrlData } = supabaseAdmin.storage.from('videos').getPublicUrl(filePath);
+        videoUrl = publicUrlData.publicUrl;
+      }
+    }
+
     // ---- Insere o rascunho ----
     const { error: dbError } = await supabaseAdmin.from('paginas').insert({
       id: pageId,
@@ -208,6 +235,7 @@ export async function POST(req: NextRequest) {
       expira_em: expiraEm.toISOString(),
       musica_youtube_id: musicaYoutubeId,
       audio_url: audioUrl,
+      video_url: videoUrl,
     });
 
     if (dbError) {

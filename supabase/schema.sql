@@ -48,6 +48,9 @@ create table if not exists public.paginas (
   musica_youtube_id text,
   -- mensagem de voz do comprador (Fase 12): URL pública no bucket "audios"
   audio_url text,
+  -- mensagem em vídeo do comprador (Fase 14): alternativa à voz, URL
+  -- pública no bucket "videos" — usa um OU outro, nunca os dois
+  video_url text,
   criado_em timestamptz not null default now()
 );
 
@@ -101,6 +104,7 @@ alter table public.paginas add column if not exists lembrete_enviado_em timestam
 alter table public.pagamentos add column if not exists criado_em timestamptz not null default now();
 alter table public.paginas add column if not exists musica_youtube_id text;
 alter table public.paginas add column if not exists audio_url text;
+alter table public.paginas add column if not exists video_url text;
 
 -- mensagem passa a ser opcional (blocos podem substituí-la)
 alter table public.paginas alter column mensagem drop not null;
@@ -203,6 +207,16 @@ begin
       for select to public
       using (bucket_id = 'audios');
   end if;
+
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'storage' and tablename = 'objects'
+      and policyname = 'Allow public read access to videos'
+  ) then
+    create policy "Allow public read access to videos" on storage.objects
+      for select to public
+      using (bucket_id = 'videos');
+  end if;
 end $$;
 
 -- ----------------------------------------------------------------------------
@@ -235,4 +249,12 @@ on conflict (id) do nothing;
 -- ----------------------------------------------------------------------------
 insert into storage.buckets (id, name, public)
 values ('audios', 'audios', true)
+on conflict (id) do nothing;
+
+-- ----------------------------------------------------------------------------
+-- Bucket de vídeos (Fase 14 — mensagem em vídeo do comprador, alternativa
+-- à voz). Mesmo modelo de segurança: leitura pública, upload só service role.
+-- ----------------------------------------------------------------------------
+insert into storage.buckets (id, name, public)
+values ('videos', 'videos', true)
 on conflict (id) do nothing;

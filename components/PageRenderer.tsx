@@ -9,6 +9,7 @@ import { tocarSting } from '@/lib/audioStings';
 import MusicPlayer from './MusicPlayer';
 import ShareStoryButton from './ShareStoryButton';
 import VoiceMessagePlayer from './VoiceMessagePlayer';
+import VideoMessagePlayer from './VideoMessagePlayer';
 
 /**
  * Renderização visual da página do presente — componente único usado pelo
@@ -38,6 +39,12 @@ export interface ConteudoPagina {
   musicaYoutubeId?: string | null;
   /** URL da mensagem de voz do comprador (Fase 12) — null = sem áudio. */
   audioUrl?: string | null;
+  /**
+   * URL da mensagem em vídeo do comprador (Fase 14) — alternativa à voz,
+   * um OU outro. Quando ambos vierem preenchidos (não deveria acontecer),
+   * o vídeo prevalece.
+   */
+  videoUrl?: string | null;
   /**
    * Slug da página pública (Fase 7) — só presente em /p/[slug]. Controla o
    * botão de compartilhar nos Stories: sem slug (prévia ao vivo, rascunho
@@ -296,7 +303,7 @@ export default function PageRenderer({ conteudo }: { conteudo: ConteudoPagina })
 
   // ---- Monta a lista de slides (Fase 6 — modo storytime) ----
   const slides: { key: string; node: React.ReactNode }[] = [];
-  if (conteudo.audioUrl) {
+  if (conteudo.videoUrl || conteudo.audioUrl) {
     slides.push({
       key: 'voz',
       node: (
@@ -308,7 +315,11 @@ export default function PageRenderer({ conteudo }: { conteudo: ConteudoPagina })
           >
             Antes de tudo
           </div>
-          <VoiceMessagePlayer audioUrl={conteudo.audioUrl} classico={classico} />
+          {conteudo.videoUrl ? (
+            <VideoMessagePlayer videoUrl={conteudo.videoUrl} classico={classico} />
+          ) : (
+            <VoiceMessagePlayer audioUrl={conteudo.audioUrl!} classico={classico} />
+          )}
         </div>
       ),
     });

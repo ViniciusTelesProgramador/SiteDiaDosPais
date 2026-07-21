@@ -43,7 +43,10 @@ export default function VoiceMessagePlayer({ audioUrl, classico }: Props) {
       />
       <button
         type="button"
-        onClick={alternar}
+        onClick={(e) => {
+          e.stopPropagation();
+          alternar();
+        }}
         aria-label={tocando ? 'Pausar a mensagem de voz' : 'Tocar a mensagem de voz'}
         className={`flex-shrink-0 w-14 h-14 rounded-full flex items-center justify-center transition-transform active:scale-95 ${
           tocando ? 'animate-pulse-ring' : ''

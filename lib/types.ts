@@ -46,6 +46,7 @@ export interface Pagina {
   lembrete_enviado_em: string | null;
   musica_youtube_id: string | null;
   audio_url: string | null;
+  video_url: string | null;
   criado_em: string;
 }
 

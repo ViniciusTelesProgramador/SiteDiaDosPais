@@ -585,6 +585,37 @@ console.
 
 ---
 
+## Fase 14 — Mensagem em vídeo do comprador (aprovada em 20/07/2026)
+
+> Origem: item 1 da lista de 10 melhorias — a alavanca emocional mais
+> forte ainda não construída (ver o rosto, não só ouvir a voz).
+
+- `components/GravadorAudio.tsx` virou `components/GravadorMensagem.tsx`
+  com toggle "🎙️ Voz" / "🎥 Vídeo" — grava um OU outro, nunca os dois
+  (mesmo gravador). `getUserMedia({audio:true, video: modo==='video'})`.
+- Dados: `paginas.video_url` + bucket `videos` (mesmo modelo de segurança
+  de `fotos`/`audios`).
+- Reprodução: `components/VideoMessagePlayer.tsx` (novo) — vídeo nativo
+  com overlay de tocar/pausar, sem autoplay; mesmo slide "Antes de tudo"
+  do storytime (vídeo tem prioridade sobre áudio se ambos existirem, o
+  que não deveria acontecer dado o toggle único).
+
+**Bug real pego durante a verificação:** o clique nos botões de tocar/
+pausar (voz, vídeo, e também "Compartilhar nos Stories") "vazava" pro
+clique de navegação do slide por trás — o `Viewport` do `PageRenderer`
+decide avançar/voltar com base na posição de qualquer clique dentro dele,
+e nenhum desses botões chamava `stopPropagation()`. Corrigido nos três
+(`VoiceMessagePlayer`, `VideoMessagePlayer`, `ShareStoryButton`). O
+`MusicPlayer` não tinha o problema — fica no cabeçalho, fora da área de
+navegação por toque.
+
+**Verificação real:** Playwright com câmera+microfone falsos do Chromium
+(`--use-fake-device-for-media-stream`) — gravação de vídeo, upload
+(mock), cerimônia completa, slide de vídeo tocando/pausando sem navegar
+o slide sozinho. Zero erros de console.
+
+---
+
 ## Decisões que dependem do dono do produto (não são código)
 
 Estas travam tarefas se atrasarem — todas têm lead time externo (DNS, verificação de conta, etc.):
