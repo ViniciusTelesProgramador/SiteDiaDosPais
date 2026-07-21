@@ -3,6 +3,8 @@
 export interface Midia {
   url: string;
   legenda?: string;
+  /** Ano/idade da lembrança (Fase 13, item 7 — linha do tempo). */
+  ano?: string;
 }
 
 export interface Bloco {

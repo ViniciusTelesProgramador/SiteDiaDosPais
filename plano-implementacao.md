@@ -553,6 +553,38 @@ console.
 
 ---
 
+## Fase 13 — 5 melhorias de baixo risco no entregável (aprovada em 20/07/2026)
+
+> Origem: mesmo depois da Fase 12, Pedro achou o entregável ainda fraco.
+> Pedi pra listar 10 ideias ranqueadas por impacto; ele escolheu 7
+> (itens 1,2,4,5,7,8,10). Dividido em 3 fases por risco — esta é a
+> primeira (baixo risco, entrega rápida): itens 4, 5, 7, 8, 10.
+
+- **Item 4 — cinematográfico nas fotos:** `@keyframes ken-burns` (zoom
+  lento contínuo) + `.foto-cinematica` (grade de cor quente uniforme via
+  `filter`) em `components/PageRenderer.tsx`.
+- **Item 5 — caligrafia no fechamento:** fonte manuscrita (`Caveat`, via
+  `next/font/google`, self-hosted no build) + palavras aparecendo uma a
+  uma. **Bug pego e corrigido durante a verificação:** o espaço dentro de
+  um `inline-block` próprio é recortado pelo navegador e some — corrigido
+  deixando os espaços como texto simples entre os `<span>` das palavras
+  (não dentro deles).
+- **Item 7 — linha do tempo contida:** campo opcional "ano" por foto no
+  formulário; aparece como etiqueta no canto da foto. Decisão consciente:
+  não virou uma timeline com vários pontos visíveis ao mesmo tempo — isso
+  quebraria o modelo "um slide por vez" do storytime (Fase 6).
+- **Item 8 — stings sintetizados:** `lib/audioStings.ts` (novo) — acorde
+  curto via Web Audio API (osciladores + envelope), zero arquivo de
+  áudio, disparado de forma síncrona dentro do próprio clique que avança
+  pro clímax/fechamento (exigência da política de autoplay).
+- **Item 10 — contador de visualizações:** `visualizacoes` já existia no
+  schema — só faltava mostrar. Tela de sucesso agora mostra "Ele já abriu
+  Nx".
+- **Verificação real:** Playwright completo, incluindo o bug da
+  caligrafia pego e corrigido antes de seguir. Zero erros de console.
+
+---
+
 ## Decisões que dependem do dono do produto (não são código)
 
 Estas travam tarefas se atrasarem — todas têm lead time externo (DNS, verificação de conta, etc.):

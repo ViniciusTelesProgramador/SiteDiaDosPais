@@ -26,6 +26,7 @@ import {
   FileText,
   Home,
   UserPlus,
+  Eye,
 } from 'lucide-react';
 
 const POLL_INTERVALO_MS = 4500;
@@ -602,6 +603,16 @@ export default function PreviewPagina() {
               </div>
               <span className="block text-xxs font-bold text-gray-400 uppercase tracking-wide">
                 Para {draft.nome_destinatario}
+              </span>
+            </div>
+
+            {/* Contador de visualizações (Fase 13, item 10) */}
+            <div className="flex items-center justify-center gap-2 text-xs text-gray-500 font-medium mb-8">
+              <Eye className="w-3.5 h-3.5 text-gray-400" />
+              <span>
+                {draft.visualizacoes
+                  ? `Ele já abriu ${draft.visualizacoes}x`
+                  : 'Ele ainda não abriu'}
               </span>
             </div>
 

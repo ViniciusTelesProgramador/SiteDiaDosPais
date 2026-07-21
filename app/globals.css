@@ -102,7 +102,9 @@ body {
   .animate-seal-breathe,
   .animate-selo-quebra,
   .animate-aba-abrindo,
-  .animate-carta-sobe {
+  .animate-carta-sobe,
+  .animate-ken-burns,
+  .animate-palavra-escrita {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
   }
@@ -239,4 +241,40 @@ body {
 
 .animate-carta-sobe {
   animation: carta-sobe 650ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Fase 13, item 4: tratamento cinematográfico das fotos — leve zoom
+   contínuo (Ken Burns) + grade de cor quente uniforme, mesmo em foto de
+   celular comum. */
+@keyframes ken-burns {
+  from {
+    transform: scale(1) translate(0, 0);
+  }
+  to {
+    transform: scale(1.06) translate(-1%, -1%);
+  }
+}
+
+.animate-ken-burns {
+  animation: ken-burns 8s ease-in-out forwards;
+}
+
+.foto-cinematica {
+  filter: saturate(1.1) contrast(1.05) sepia(0.05) brightness(1.02);
+}
+
+/* Fase 13, item 5: cada palavra da carta final "sendo escrita". */
+@keyframes palavra-escrita {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-palavra-escrita {
+  animation: palavra-escrita 300ms ease-out forwards;
 }

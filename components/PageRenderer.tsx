@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { ORDEM_NARRATIVA, BLOCO_CLIMAX } from '@/lib/config';
 import { ordenarBlocosNarrativa, type Bloco, type Midia, type Contribuicao } from '@/lib/types';
+import { tocarSting } from '@/lib/audioStings';
 import MusicPlayer from './MusicPlayer';
 import ShareStoryButton from './ShareStoryButton';
 import VoiceMessagePlayer from './VoiceMessagePlayer';
@@ -69,10 +70,15 @@ function FotoComLegenda({
             alt={midia.legenda || `Memória ${idx + 1}`}
             fill
             sizes="(max-width: 640px) 100vw, 400px"
-            className="object-cover"
+            className="animate-ken-burns foto-cinematica object-cover"
             priority={idx === 0}
             unoptimized={midia.url.startsWith('data:')}
           />
+          {midia.ano && (
+            <span className="absolute top-2 left-2 bg-white/90 text-[#8C7A5C] text-[10px] font-bold tracking-wider px-2 py-1 rounded-md shadow-sm">
+              {midia.ano}
+            </span>
+          )}
         </div>
         {midia.legenda && (
           <figcaption className="mt-4 text-center text-sm text-[#6B5D45] italic leading-snug">
@@ -94,10 +100,15 @@ function FotoComLegenda({
           alt={midia.legenda || `Memória ${idx + 1}`}
           fill
           sizes="(max-width: 640px) 200px, 224px"
-          className="object-cover"
+          className="animate-ken-burns foto-cinematica object-cover"
           priority={idx === 0}
           unoptimized={midia.url.startsWith('data:')}
         />
+        {midia.ano && (
+          <span className="absolute top-2 left-2 bg-white/90 text-emerald-700 text-[10px] font-bold tracking-wider px-2 py-1 rounded-md shadow-sm">
+            {midia.ano}
+          </span>
+        )}
       </div>
       {midia.legenda && (
         <figcaption className="text-xs font-medium text-teal-800/80 text-center max-w-[14rem] leading-snug">
@@ -221,17 +232,43 @@ export default function PageRenderer({ conteudo }: { conteudo: ConteudoPagina })
 
   // Fechamento: mensagem final como assinatura + rodapé. Sempre existe —
   // é o último slide, com ou sem mensagem escrita.
+  // Fase 13, item 5: a mensagem "é escrita" palavra por palavra, numa
+  // fonte manuscrita — reforça a metáfora de carta da Fase 12. Os espaços
+  // ficam como texto simples (não dentro do span) — um espaço sozinho
+  // dentro de um inline-block é recortado pelo navegador e some.
+  let contadorPalavra = 0;
+  const linhasMensagem = (conteudo.mensagem || '').split('\n');
   const SlideFechamento = () => (
     <div className="text-center space-y-8">
       {temMensagem && (
         <div
           className={
             classico
-              ? 'text-left max-w-sm mx-auto text-[#3A3530] text-base sm:text-lg leading-relaxed whitespace-pre-line pl-3 border-l-2 border-[#D1C9BA]/60 italic'
-              : 'bg-white border border-emerald-100 rounded-3xl p-5 sm:p-7 text-teal-950 text-base sm:text-lg leading-relaxed whitespace-pre-line shadow-sm font-medium'
+              ? 'text-left max-w-sm mx-auto text-[#3A3530] text-xl sm:text-2xl leading-relaxed pl-3 border-l-2 border-[#D1C9BA]/60'
+              : 'bg-white border border-emerald-100 rounded-3xl p-5 sm:p-7 text-teal-950 text-xl sm:text-2xl leading-relaxed shadow-sm'
           }
+          style={{ fontFamily: 'var(--font-caveat)' }}
         >
-          {conteudo.mensagem}
+          {linhasMensagem.map((linha, idxLinha) => (
+            <React.Fragment key={idxLinha}>
+              {idxLinha > 0 && <br />}
+              {linha.split(' ').map((palavra, idxPalavra, arr) => {
+                const atraso = contadorPalavra * 40;
+                contadorPalavra += 1;
+                return (
+                  <React.Fragment key={idxPalavra}>
+                    <span
+                      className="animate-palavra-escrita inline-block"
+                      style={{ animationDelay: `${atraso}ms`, animationFillMode: 'backwards' }}
+                    >
+                      {palavra}
+                    </span>
+                    {idxPalavra < arr.length - 1 ? ' ' : ''}
+                  </React.Fragment>
+                );
+              })}
+            </React.Fragment>
+          ))}
         </div>
       )}
       <div>
@@ -315,7 +352,19 @@ export default function PageRenderer({ conteudo }: { conteudo: ConteudoPagina })
     setIndice((i) => Math.min(i, total - 1));
   }, [total]);
 
-  const irPara = (alvo: number) => setIndice(Math.max(0, Math.min(alvo, total - 1)));
+  // Fase 13, item 8: sting sonoro ao chegar no clímax/fechamento — disparado
+  // de forma síncrona dentro do próprio gesto (toque/clique), como exige a
+  // política de autoplay dos navegadores pra Web Audio API.
+  const irPara = (alvo: number) => {
+    const destino = Math.max(0, Math.min(alvo, total - 1));
+    const chaveAtual = slides[indiceAtual]?.key;
+    const chaveDestino = slides[destino]?.key;
+    if (chaveDestino !== chaveAtual) {
+      if (chaveDestino === BLOCO_CLIMAX) tocarSting('climax');
+      else if (chaveDestino === 'fechamento') tocarSting('fechamento');
+    }
+    setIndice(destino);
+  };
   const avancar = () => irPara(indiceAtual + 1);
   const voltar = () => irPara(indiceAtual - 1);
 

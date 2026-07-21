@@ -23,6 +23,7 @@ export interface PageDraft {
   reacao_texto?: string | null;
   musica_youtube_id?: string | null;
   audio_url?: string | null;
+  visualizacoes?: number;
   isMock?: boolean;
   criado_em?: string;
 }

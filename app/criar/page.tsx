@@ -38,6 +38,8 @@ interface FotoForm {
   file: File;
   previewUrl: string;
   legenda: string;
+  /** Ano/idade da lembrança (Fase 13, item 7 — linha do tempo), opcional. */
+  ano: string;
 }
 
 type Etapa = 'dados' | 'perguntas' | 'fechamento' | 'fotos';
@@ -83,6 +85,7 @@ export default function CriarPresente() {
   const midiasPreview: Midia[] = fotos.map((f) => ({
     url: f.previewUrl,
     legenda: f.legenda.trim() || undefined,
+    ano: f.ano.trim() || undefined,
   }));
 
   const musicaYoutubeId = musicaUrl.trim() ? extrairYoutubeId(musicaUrl) : null;
@@ -126,6 +129,7 @@ export default function CriarPresente() {
                     file: comprimida,
                     previewUrl: URL.createObjectURL(comprimida),
                     legenda: '',
+                    ano: '',
                   },
                 ]
           );
@@ -149,6 +153,10 @@ export default function CriarPresente() {
 
   const atualizarLegenda = (index: number, legenda: string) => {
     setFotos((prev) => prev.map((f, i) => (i === index ? { ...f, legenda } : f)));
+  };
+
+  const atualizarAno = (index: number, ano: string) => {
+    setFotos((prev) => prev.map((f, i) => (i === index ? { ...f, ano } : f)));
   };
 
   const fileToBase64 = (file: Blob): Promise<string> =>
@@ -226,6 +234,7 @@ export default function CriarPresente() {
           midias: base64Fotos.map((url, i) => ({
             url,
             legenda: fotos[i].legenda.trim() || undefined,
+            ano: fotos[i].ano.trim() || undefined,
           })),
           tema,
           pago: false,
@@ -252,6 +261,7 @@ export default function CriarPresente() {
           tema,
           revelar_em: revelarEm,
           legendas: fotos.map((f) => f.legenda.trim()),
+          anos: fotos.map((f) => f.ano.trim()),
           aceitou_termos: aceitouTermos,
           musica_youtube_url: musicaUrl.trim() || undefined,
         })
@@ -578,17 +588,28 @@ export default function CriarPresente() {
                               className="w-full h-full object-cover"
                             />
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <input
-                              type="text"
-                              value={foto.legenda}
-                              onChange={(e) => atualizarLegenda(index, e.target.value)}
-                              placeholder="Que dia foi esse? O que você lembra dele? (opcional)"
-                              maxLength={140}
-                              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none bg-white placeholder:text-gray-400"
-                            />
-                            <p className="text-[10px] text-gray-400 mt-1">
-                              Uma legenda específica vale mais que a foto sozinha.
+                          <div className="flex-1 min-w-0 space-y-1.5">
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                value={foto.ano}
+                                onChange={(e) => atualizarAno(index, e.target.value.slice(0, 4))}
+                                placeholder="Ano"
+                                maxLength={4}
+                                inputMode="numeric"
+                                className="w-16 px-2 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none bg-white placeholder:text-gray-400 flex-shrink-0"
+                              />
+                              <input
+                                type="text"
+                                value={foto.legenda}
+                                onChange={(e) => atualizarLegenda(index, e.target.value)}
+                                placeholder="Que dia foi esse? O que você lembra dele? (opcional)"
+                                maxLength={140}
+                                className="flex-1 min-w-0 px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none bg-white placeholder:text-gray-400"
+                              />
+                            </div>
+                            <p className="text-[10px] text-gray-400">
+                              O ano é opcional — dá um efeito de linha do tempo na página.
                             </p>
                           </div>
                           <button

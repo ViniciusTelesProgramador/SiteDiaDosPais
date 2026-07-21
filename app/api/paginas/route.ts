@@ -17,6 +17,7 @@ interface PayloadCriacao {
   tema: string;
   revelar_em?: string | null;
   legendas?: string[];
+  anos?: string[];
   aceitou_termos?: boolean;
   musica_youtube_url?: string;
 }
@@ -131,6 +132,7 @@ export async function POST(req: NextRequest) {
       audio.size <= MAX_AUDIO_MB * 1024 * 1024;
 
     const legendas = Array.isArray(payload.legendas) ? payload.legendas : [];
+    const anos = Array.isArray(payload.anos) ? payload.anos : [];
     const pageId = crypto.randomUUID();
 
     // Rascunhos expiram em 7 dias (RNF04) — o cron usa este campo
@@ -162,7 +164,13 @@ export async function POST(req: NextRequest) {
 
       const { data: publicUrlData } = supabaseAdmin.storage.from('fotos').getPublicUrl(filePath);
       const legenda = typeof legendas[i] === 'string' ? legendas[i].trim().slice(0, 140) : '';
-      midias.push(legenda ? { url: publicUrlData.publicUrl, legenda } : { url: publicUrlData.publicUrl });
+      const anoBruto = typeof anos[i] === 'string' ? anos[i].trim().slice(0, 4) : '';
+      const ano = /^\d{4}$/.test(anoBruto) ? anoBruto : '';
+
+      const midia: Midia = { url: publicUrlData.publicUrl };
+      if (legenda) midia.legenda = legenda;
+      if (ano) midia.ano = ano;
+      midias.push(midia);
     }
 
     // ---- Upload do áudio (opcional; falha aqui não bloqueia a criação) ----
