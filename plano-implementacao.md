@@ -665,6 +665,62 @@ mesmo `id` de preview, com a mudança refletida. Zero erros de console.
 
 ---
 
+## Fase 16 — Recado em Movimento: finale 3D + vídeo compartilhável (aprovada em 23/07/2026)
+
+> Origem: Pedro pediu pra juntar tudo que já apareceu slide a slide — fotos,
+> frases, "nossa música" — num momento final bonito, construído com a ajuda
+> da skill Three.js recém-instalada (`.claude/skills/threejs-*`), e que
+> desse pra compartilhar nos Stories ou salvar na câmera. Decisão dele: o
+> resultado deveria ser um vídeo curto da montagem acontecendo, terminando
+> parado ("o vídeo vira o estático"), com um fallback de imagem estática se
+> gravar vídeo não for possível no aparelho — mesmo princípio de rede de
+> segurança usado no projeto inteiro (música sem autoplay, gravação com
+> upload de arquivo). Entra como slide novo, depois do fechamento atual —
+> não substitui nada que já funciona.
+
+- **Nova dependência:** `three` + `@types/three` — primeira dependência
+  pesada do projeto. Só carrega quando o leitor chega nesse slide
+  (`next/dynamic({ ssr: false })` em `components/PageRenderer.tsx`) — o
+  bundle inicial de `/p/[slug]` não cresceu no build.
+- `lib/recapScene.ts` (novo): cena Three.js pura (sem React) — fotos e a
+  capa do YouTube viram texturas em `PlaneGeometry` + `MeshBasicMaterial`
+  (sem luzes: a Basic ignora iluminação mesmo); frases e o card da música
+  são desenhados num `<canvas>` 2D e aplicados via `CanvasTexture` (evita
+  carregar fonte 3D). Animação por interpolação manual com
+  `THREE.MathUtils.smootherstep`, atraso escalonado por item — sem
+  `AnimationMixer` (overkill pra uma sequência única).
+- `components/RecapFinale3D.tsx` (novo): grava a montagem com
+  `canvas.captureStream(30)` + `MediaRecorder` (mesmo padrão de detecção de
+  mimeType do `GravadorMensagem.tsx`) assim que o slide monta; ao terminar
+  (montagem + ~1s parado), o vídeo fica pronto pro botão de compartilhar.
+  Três redes de segurança: sem `MediaRecorder`/`captureStream`, cai pra
+  capturar um frame estático (`canvas.toBlob`); sem WebGL, cai pra uma
+  colagem simples em HTML/CSS reaproveitando o card 2D da Fase 7; com
+  `prefers-reduced-motion: reduce`, pula a animação, mostra a composição
+  final direto e não grava vídeo parado (vai direto pra imagem). Limpa
+  geometrias/texturas/renderer e para a gravação no unmount (o slide é
+  remontado pelo `key` do `Viewport` toda vez que o leitor navega).
+- `lib/compartilharArquivo.ts` (novo): extrai o `navigator.share`/fallback
+  de download que já existia dentro de `ShareStoryButton.tsx` (Fase 7) num
+  helper único, reusado pelos dois botões (card 2D e finale 3D).
+- `components/PageRenderer.tsx`: novo slide `recap-3d`, sempre depois de
+  `'fechamento'`, condicionado a `conteudo.midias.length > 0`; monta os
+  itens (até 5 fotos, a frase de abertura, o clímax, a capa do YouTube se
+  houver música). Botão de compartilhar só aparece com `slugPublico` (mesmo
+  gate do `ShareStoryButton`).
+
+**Verificação real:** Playwright com WebGL forçado no Chromium headless
+(`--use-gl=angle --use-angle=swiftshader`) — fluxo completo (criação →
+pagamento mock → página pública → cerimônia da carta → navegação até o
+slide novo) confirmou o canvas renderizando, o botão de compartilhar
+aparecendo, e o clique nele disparando o download real de um `.webm`
+(fallback de download, já que `navigator.share` não existe no Chromium
+headless — mas confirma que o Blob de vídeo foi gerado de verdade). Testado
+também sair do slide e voltar: o canvas some e reaparece limpo, sem erro de
+console, sem travar a navegação de volta ao mesmo slide.
+
+---
+
 ## Decisões que dependem do dono do produto (não são código)
 
 Estas travam tarefas se atrasarem — todas têm lead time externo (DNS, verificação de conta, etc.):

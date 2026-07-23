@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { Share2, Loader2 } from 'lucide-react';
 import { gerarCardCompartilhamento } from '@/lib/shareCard';
+import { compartilharArquivo } from '@/lib/compartilharArquivo';
 
 interface Props {
   nomeDestinatario: string;
@@ -32,26 +33,10 @@ export default function ShareStoryButton({ nomeDestinatario, frase, fotoUrl, cla
         fotoUrl,
         classico,
       });
-      const arquivo = new File([blob], 'recado-surpresa.png', { type: 'image/png' });
-      const origin = typeof window !== 'undefined' ? window.location.origin : '';
-
-      if (navigator.canShare?.({ files: [arquivo] })) {
-        await navigator.share({
-          files: [arquivo],
-          title: 'Recado Surpresa',
-          text: 'Eu recebi uma surpresa assim ❤️ Faça a sua também:',
-          url: origin,
-        });
-      } else {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'recado-surpresa.png';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      }
+      await compartilharArquivo(blob, 'recado-surpresa.png', {
+        titulo: 'Recado Surpresa',
+        texto: 'Eu recebi uma surpresa assim ❤️ Faça a sua também:',
+      });
     } catch (err) {
       if ((err as Error)?.name !== 'AbortError') {
         console.error('[ShareStoryButton] Erro ao compartilhar:', err);

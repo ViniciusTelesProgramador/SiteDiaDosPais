@@ -2,14 +2,20 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
+import dynamic from 'next/dynamic';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { ORDEM_NARRATIVA, BLOCO_CLIMAX } from '@/lib/config';
 import { ordenarBlocosNarrativa, type Bloco, type Midia, type Contribuicao } from '@/lib/types';
 import { tocarSting } from '@/lib/audioStings';
+import type { ItemRecap } from '@/lib/recapScene';
 import MusicPlayer from './MusicPlayer';
 import ShareStoryButton from './ShareStoryButton';
 import VoiceMessagePlayer from './VoiceMessagePlayer';
 import VideoMessagePlayer from './VideoMessagePlayer';
+
+// Three.js só carrega quando o leitor chega no slide do finale (Fase 16) —
+// nunca faz parte do bundle inicial da página.
+const RecapFinale3D = dynamic(() => import('./RecapFinale3D'), { ssr: false });
 
 /**
  * Renderização visual da página do presente — componente único usado pelo
@@ -353,6 +359,36 @@ export default function PageRenderer({ conteudo }: { conteudo: ConteudoPagina })
     slides.push({ key: 'coro', node: <SlideCoro /> });
   }
   slides.push({ key: 'fechamento', node: <SlideFechamento /> });
+
+  // Recado em Movimento (Fase 16): junta fotos + frases + "nossa música"
+  // numa colagem 3D que pousa numa composição final estática, gravável
+  // como vídeo curto pra compartilhar/salvar.
+  if (conteudo.midias.length > 0) {
+    const itensRecap: ItemRecap[] = [
+      ...conteudo.midias.map((m): ItemRecap => ({ tipo: 'foto', url: m.url })),
+      ...abertura.slice(0, 1).map((b): ItemRecap => ({ tipo: 'texto', texto: b.texto })),
+      ...climax.slice(0, 1).map((b): ItemRecap => ({ tipo: 'texto', texto: b.texto })),
+      ...(conteudo.musicaYoutubeId
+        ? ([
+            {
+              tipo: 'musica',
+              capaUrl: `https://img.youtube.com/vi/${conteudo.musicaYoutubeId}/hqdefault.jpg`,
+            },
+          ] as ItemRecap[])
+        : []),
+    ];
+    slides.push({
+      key: 'recap-3d',
+      node: (
+        <RecapFinale3D
+          itens={itensRecap}
+          classico={classico}
+          nomeDestinatario={conteudo.nome_destinatario}
+          podeCompartilhar={Boolean(conteudo.slugPublico)}
+        />
+      ),
+    });
+  }
 
   // ---- Navegação ----
   const [indice, setIndice] = useState(0);

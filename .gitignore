@@ -44,3 +44,16 @@ next-env.d.ts
 /.claude/skills/banner-design/
 /.claude/skills/brand/
 /.claude/skills/slides/
+
+# skill de terceiros (github.com/cloudai-x/threejs-skills) — referência de
+# Three.js de uso geral, não faz parte do código do Recado Surpresa
+/.claude/skills/threejs-animation/
+/.claude/skills/threejs-fundamentals/
+/.claude/skills/threejs-geometry/
+/.claude/skills/threejs-interaction/
+/.claude/skills/threejs-lighting/
+/.claude/skills/threejs-loaders/
+/.claude/skills/threejs-materials/
+/.claude/skills/threejs-postprocessing/
+/.claude/skills/threejs-shaders/
+/.claude/skills/threejs-textures/
