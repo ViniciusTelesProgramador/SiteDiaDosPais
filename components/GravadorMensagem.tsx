@@ -1,8 +1,13 @@
 'use client';
 
 import React, { useRef, useState } from 'react';
-import { Mic, Video, Square, RotateCcw, AlertCircle } from 'lucide-react';
-import { MAX_AUDIO_SEGUNDOS, MAX_VIDEO_SEGUNDOS } from '@/lib/config';
+import { Mic, Video, Square, RotateCcw, AlertCircle, Upload } from 'lucide-react';
+import {
+  MAX_AUDIO_SEGUNDOS,
+  MAX_VIDEO_SEGUNDOS,
+  MAX_AUDIO_MB,
+  MAX_VIDEO_MB,
+} from '@/lib/config';
 
 export type MensagemGravada = { tipo: 'voz' | 'video'; blob: Blob } | null;
 
@@ -11,10 +16,27 @@ interface Props {
 }
 
 /**
+ * Escolhe o primeiro mimeType realmente suportado pelo navegador — o Safari
+ * não suporta o contêiner WebM no MediaRecorder e grava em outro formato
+ * (tipicamente MP4/AAC); gravar sem checar isso e depois rotular o Blob
+ * como "webm" na marra quebra a reprodução.
+ */
+function escolherMimeType(video: boolean): string | undefined {
+  if (typeof MediaRecorder === 'undefined' || !MediaRecorder.isTypeSupported) return undefined;
+  const candidatos = video
+    ? ['video/webm;codecs=vp9,opus', 'video/webm', 'video/mp4']
+    : ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'];
+  return candidatos.find((t) => MediaRecorder.isTypeSupported(t));
+}
+
+/**
  * Gravação da mensagem do comprador (Fase 12: voz; Fase 14: alternativa em
  * vídeo) — opcional, um modo por vez. Grava até o limite de segundos via
  * MediaRecorder, mostra prévia e permite regravar (ou trocar de modo).
- * Erro de permissão de câmera/microfone nunca bloqueia o formulário.
+ * Erro de permissão de câmera/microfone nunca bloqueia o formulário — e
+ * sempre existe a opção de enviar um arquivo já gravado no app nativo do
+ * celular, pra quando gravar ao vivo não for possível (navegador in-app do
+ * Instagram/WhatsApp, versões antigas de iOS etc.).
  */
 export default function GravadorMensagem({ onMensagemPronta }: Props) {
   const [modo, setModo] = useState<'voz' | 'video'>('voz');
@@ -27,8 +49,13 @@ export default function GravadorMensagem({ onMensagemPronta }: Props) {
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const arquivoInputRef = useRef<HTMLInputElement>(null);
 
   const limiteSegundos = modo === 'video' ? MAX_VIDEO_SEGUNDOS : MAX_AUDIO_SEGUNDOS;
+  const gravacaoAoVivoDisponivel =
+    typeof window !== 'undefined' &&
+    typeof MediaRecorder !== 'undefined' &&
+    Boolean(navigator.mediaDevices?.getUserMedia);
 
   const pararGravacao = () => {
     mediaRecorderRef.current?.stop();
@@ -47,16 +74,19 @@ export default function GravadorMensagem({ onMensagemPronta }: Props) {
       streamRef.current = stream;
       chunksRef.current = [];
 
-      const recorder = new MediaRecorder(stream);
+      const mimeType = escolherMimeType(modo === 'video');
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
       mediaRecorderRef.current = recorder;
 
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
       recorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, {
-          type: modo === 'video' ? 'video/webm' : 'audio/webm',
-        });
+        // Usa o mimeType real do gravador (recorder.mimeType) — nunca um
+        // valor fixo: no Safari isso é MP4/AAC, não WebM.
+        const blob = new Blob(chunksRef.current, { type: recorder.mimeType });
         const url = URL.createObjectURL(blob);
         setPreviewUrl(url);
         onMensagemPronta({ tipo: modo, blob });
@@ -95,6 +125,36 @@ export default function GravadorMensagem({ onMensagemPronta }: Props) {
   const trocarModo = (novoModo: 'voz' | 'video') => {
     if (gravando || previewUrl) return; // precisa regravar antes de trocar
     setModo(novoModo);
+  };
+
+  /**
+   * Alternativa a gravar ao vivo: aceita um áudio/vídeo já gravado no app
+   * nativo do celular (câmera, memorando de voz). Resolve os casos em que
+   * getUserMedia não funciona — navegador in-app (Instagram/WhatsApp),
+   * versões antigas de iOS — sem depender de detectar cada variante.
+   */
+  const handleArquivoEscolhido = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const arquivo = e.target.files?.[0];
+    if (arquivoInputRef.current) arquivoInputRef.current.value = '';
+    if (!arquivo) return;
+    setErro(null);
+
+    const ehVideo = arquivo.type.startsWith('video/');
+    const ehAudio = arquivo.type.startsWith('audio/');
+    if (!ehVideo && !ehAudio) {
+      setErro('Escolha um arquivo de áudio ou vídeo.');
+      return;
+    }
+    const limiteMB = ehVideo ? MAX_VIDEO_MB : MAX_AUDIO_MB;
+    if (arquivo.size > limiteMB * 1024 * 1024) {
+      setErro(`Esse arquivo passa de ${limiteMB}MB — escolha um menor.`);
+      return;
+    }
+
+    setModo(ehVideo ? 'video' : 'voz');
+    const url = URL.createObjectURL(arquivo);
+    setPreviewUrl(url);
+    onMensagemPronta({ tipo: ehVideo ? 'video' : 'voz', blob: arquivo });
   };
 
   return (
@@ -136,6 +196,13 @@ export default function GravadorMensagem({ onMensagemPronta }: Props) {
         </div>
       )}
 
+      {!gravacaoAoVivoDisponivel && !previewUrl && !gravando && (
+        <p className="text-xs text-gray-500 mb-3">
+          Gravar direto aqui não está disponível neste navegador — envie um arquivo já
+          gravado no app de câmera ou memorando de voz do celular.
+        </p>
+      )}
+
       {erro && (
         <div className="mb-3 p-3 rounded-xl bg-amber-50 border border-amber-200 flex items-start gap-2 text-xs text-amber-800">
           <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
@@ -144,18 +211,45 @@ export default function GravadorMensagem({ onMensagemPronta }: Props) {
       )}
 
       {!previewUrl && !gravando && (
-        <button
-          type="button"
-          onClick={iniciarGravacao}
-          className="w-full py-3.5 px-4 rounded-xl border border-gray-200 hover:bg-gray-50 text-gray-700 font-semibold text-sm flex items-center justify-center gap-2 transition-all"
-        >
-          {modo === 'video' ? (
-            <Video className="w-4 h-4 text-rose-500" />
-          ) : (
-            <Mic className="w-4 h-4 text-rose-500" />
+        <div className="space-y-2">
+          {gravacaoAoVivoDisponivel && (
+            <button
+              type="button"
+              onClick={iniciarGravacao}
+              className="w-full py-3.5 px-4 rounded-xl border border-gray-200 hover:bg-gray-50 text-gray-700 font-semibold text-sm flex items-center justify-center gap-2 transition-all"
+            >
+              {modo === 'video' ? (
+                <Video className="w-4 h-4 text-rose-500" />
+              ) : (
+                <Mic className="w-4 h-4 text-rose-500" />
+              )}
+              <span>Gravar {modo === 'video' ? 'vídeo' : 'voz'}</span>
+            </button>
           )}
-          <span>Gravar {modo === 'video' ? 'vídeo' : 'voz'}</span>
-        </button>
+          <button
+            type="button"
+            onClick={() => arquivoInputRef.current?.click()}
+            className={
+              gravacaoAoVivoDisponivel
+                ? 'w-full py-2 text-xs font-semibold text-gray-500 hover:text-gray-700 flex items-center justify-center gap-1.5 transition-colors'
+                : 'w-full py-3.5 px-4 rounded-xl border border-gray-200 hover:bg-gray-50 text-gray-700 font-semibold text-sm flex items-center justify-center gap-2 transition-all'
+            }
+          >
+            <Upload className="w-4 h-4 text-rose-500" />
+            <span>
+              {gravacaoAoVivoDisponivel
+                ? 'ou envie um arquivo já gravado'
+                : `Enviar ${modo === 'video' ? 'vídeo' : 'áudio'} já gravado`}
+            </span>
+          </button>
+          <input
+            type="file"
+            ref={arquivoInputRef}
+            accept="audio/*,video/*"
+            onChange={handleArquivoEscolhido}
+            className="hidden"
+          />
+        </div>
       )}
 
       {gravando && (

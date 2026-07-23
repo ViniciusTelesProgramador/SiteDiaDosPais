@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { isSupabaseConfigured } from '@/lib/supabase';
-import { saveDraftToIndexedDB } from '@/lib/localDatabase';
+import { saveDraftToIndexedDB, getDraftFromIndexedDB } from '@/lib/localDatabase';
 import { comprimirFoto } from '@/lib/imagem';
 import { isEmailValido, extrairYoutubeId } from '@/lib/utils';
 import { track } from '@/lib/analytics';
@@ -32,10 +32,14 @@ import {
   Check,
   CalendarHeart,
   Zap,
+  RotateCcw,
 } from 'lucide-react';
 
 interface FotoForm {
-  file: File;
+  /** Arquivo novo (a enviar) — exclusivo com existingUrl. */
+  file?: File;
+  /** Foto já enviada anteriormente (modo de edição) — mantida sem novo upload. */
+  existingUrl?: string;
   previewUrl: string;
   legenda: string;
   /** Ano/idade da lembrança (Fase 13, item 7 — linha do tempo), opcional. */
@@ -44,8 +48,10 @@ interface FotoForm {
 
 type Etapa = 'dados' | 'perguntas' | 'fechamento' | 'fotos';
 
-export default function CriarPresente() {
+function CriarPresenteForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const editandoId = searchParams.get('editar');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ---- Estado do formulário ----
@@ -59,6 +65,10 @@ export default function CriarPresente() {
   const [revelarModo, setRevelarModo] = useState<'diadospais' | 'agora'>('diadospais');
   const [musicaUrl, setMusicaUrl] = useState('');
   const [mensagemGravada, setMensagemGravada] = useState<MensagemGravada>(null);
+  /** Áudio/vídeo já salvo no rascunho (modo de edição) — substituído se regravar. */
+  const [mensagemExistente, setMensagemExistente] = useState<{ tipo: 'voz' | 'video'; url: string } | null>(
+    null
+  );
   const [aceitouTermos, setAceitouTermos] = useState(false);
 
   // ---- Estado de UI ----
@@ -67,10 +77,69 @@ export default function CriarPresente() {
   const [comprimindo, setComprimindo] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mostrarPreview, setMostrarPreview] = useState(false);
+  const [carregandoRascunho, setCarregandoRascunho] = useState(Boolean(editandoId));
+  const [erroRascunho, setErroRascunho] = useState<string | null>(null);
 
   useEffect(() => {
     track('iniciou_formulario');
   }, []);
+
+  // ---- Modo de edição: carrega o rascunho existente e pré-preenche tudo ----
+  useEffect(() => {
+    if (!editandoId) return;
+
+    const carregar = async () => {
+      try {
+        const localDraft = await getDraftFromIndexedDB(editandoId);
+        const draft = localDraft
+          ? localDraft
+          : await (async () => {
+              const response = await fetch(`/api/paginas/${editandoId}`);
+              if (!response.ok) throw new Error('Não foi possível carregar o rascunho.');
+              return response.json();
+            })();
+
+        if (draft.pago) {
+          setErroRascunho('Essa página já foi paga e não pode mais ser editada.');
+          return;
+        }
+
+        setEmail(draft.email_comprador || '');
+        setNomePai(draft.nome_destinatario || '');
+        setRespostas(
+          (draft.blocos || []).reduce(
+            (acc: Record<string, string>, b: Bloco) => ({ ...acc, [b.pergunta_id]: b.texto }),
+            {}
+          )
+        );
+        setMensagem(draft.mensagem || '');
+        setTema(draft.tema === 'descontraido' ? 'descontraido' : 'classico');
+        setRevelarModo(draft.revelar_em ? 'diadospais' : 'agora');
+        setMusicaUrl(draft.musica_youtube_id ? `https://youtu.be/${draft.musica_youtube_id}` : '');
+        setFotos(
+          (draft.midias || []).map((m: Midia) => ({
+            existingUrl: m.url,
+            previewUrl: m.url,
+            legenda: m.legenda || '',
+            ano: m.ano || '',
+          }))
+        );
+        if (draft.video_url) {
+          setMensagemExistente({ tipo: 'video', url: draft.video_url });
+        } else if (draft.audio_url) {
+          setMensagemExistente({ tipo: 'voz', url: draft.audio_url });
+        }
+      } catch (err) {
+        console.error(err);
+        setErroRascunho('Não foi possível carregar o rascunho. Confira o link ou crie um novo.');
+      } finally {
+        setCarregandoRascunho(false);
+      }
+    };
+
+    carregar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editandoId]);
 
   const blocosPreenchidos: Bloco[] = PERGUNTAS_GUIADAS.filter((p) =>
     respostas[p.id]?.trim()
@@ -222,34 +291,50 @@ export default function CriarPresente() {
 
     const revelarEm = revelarModo === 'diadospais' ? DATA_REVELACAO_PADRAO : null;
 
+    const fotosExistentes = fotos.filter((f) => f.existingUrl);
+    const fotosNovas = fotos.filter((f) => f.file);
+
     try {
       if (!isSupabaseConfigured()) {
         // Modo de simulação local (apenas desenvolvimento)
         console.log('Supabase não configurado. Rodando em modo de simulação...');
-        const base64Fotos = await Promise.all(fotos.map((f) => fileToBase64(f.file)));
+        const base64Fotos = await Promise.all(
+          fotosNovas.map((f) => fileToBase64(f.file as File))
+        );
+        const midiasExistentesMock = fotosExistentes.map((f) => ({
+          url: f.existingUrl as string,
+          legenda: f.legenda.trim() || undefined,
+          ano: f.ano.trim() || undefined,
+        }));
+        const midiasNovasMock = base64Fotos.map((url, i) => ({
+          url,
+          legenda: fotosNovas[i].legenda.trim() || undefined,
+          ano: fotosNovas[i].ano.trim() || undefined,
+        }));
         const base64Audio =
           mensagemGravada?.tipo === 'voz' ? await fileToBase64(mensagemGravada.blob) : null;
         const base64Video =
           mensagemGravada?.tipo === 'video' ? await fileToBase64(mensagemGravada.blob) : null;
-        const mockId = crypto.randomUUID();
+        const audioUrlFinal =
+          base64Audio || (mensagemExistente?.tipo === 'voz' ? mensagemExistente.url : null);
+        const videoUrlFinal =
+          base64Video || (mensagemExistente?.tipo === 'video' ? mensagemExistente.url : null);
+
+        const mockId = editandoId || crypto.randomUUID();
         await saveDraftToIndexedDB(mockId, {
           id: mockId,
           email_comprador: email.trim(),
           nome_destinatario: nomePai.trim(),
           mensagem: mensagem.trim() || null,
           blocos: blocosPreenchidos.length > 0 ? blocosPreenchidos : null,
-          midias: base64Fotos.map((url, i) => ({
-            url,
-            legenda: fotos[i].legenda.trim() || undefined,
-            ano: fotos[i].ano.trim() || undefined,
-          })),
+          midias: [...midiasExistentesMock, ...midiasNovasMock],
           tema,
           pago: false,
           plano: 'basico',
           revelar_em: revelarEm,
           musica_youtube_id: musicaYoutubeId,
-          audio_url: base64Audio,
-          video_url: base64Video,
+          audio_url: audioUrlFinal,
+          video_url: videoUrlFinal,
           criado_em: new Date().toISOString(),
           isMock: true,
         });
@@ -257,37 +342,62 @@ export default function CriarPresente() {
         return;
       }
 
-      // Criação via rota de servidor (service role — T0.2)
+      // Criação/edição via rota de servidor (service role — T0.2)
+      const payloadBase = {
+        email_comprador: email.trim(),
+        nome_destinatario: nomePai.trim(),
+        mensagem: mensagem.trim() || undefined,
+        blocos: blocosPreenchidos,
+        tema,
+        revelar_em: revelarEm,
+        aceitou_termos: aceitouTermos,
+        musica_youtube_url: musicaUrl.trim() || undefined,
+      };
+
       const formData = new FormData();
-      formData.append(
-        'payload',
-        JSON.stringify({
-          email_comprador: email.trim(),
-          nome_destinatario: nomePai.trim(),
-          mensagem: mensagem.trim() || undefined,
-          blocos: blocosPreenchidos,
-          tema,
-          revelar_em: revelarEm,
-          legendas: fotos.map((f) => f.legenda.trim()),
-          anos: fotos.map((f) => f.ano.trim()),
-          aceitou_termos: aceitouTermos,
-          musica_youtube_url: musicaUrl.trim() || undefined,
-        })
-      );
-      fotos.forEach((f, i) => formData.append(`foto_${i}`, f.file));
+      if (editandoId) {
+        formData.append(
+          'payload',
+          JSON.stringify({
+            ...payloadBase,
+            midias_existentes: fotosExistentes.map((f) => ({
+              url: f.existingUrl,
+              legenda: f.legenda.trim() || undefined,
+              ano: f.ano.trim() || undefined,
+            })),
+            legendas: fotosNovas.map((f) => f.legenda.trim()),
+            anos: fotosNovas.map((f) => f.ano.trim()),
+            manter_audio_url: mensagemExistente?.tipo === 'voz' ? mensagemExistente.url : null,
+            manter_video_url: mensagemExistente?.tipo === 'video' ? mensagemExistente.url : null,
+          })
+        );
+      } else {
+        formData.append(
+          'payload',
+          JSON.stringify({
+            ...payloadBase,
+            legendas: fotosNovas.map((f) => f.legenda.trim()),
+            anos: fotosNovas.map((f) => f.ano.trim()),
+          })
+        );
+      }
+      fotosNovas.forEach((f, i) => formData.append(`foto_${i}`, f.file as File));
       if (mensagemGravada?.tipo === 'voz') {
-        formData.append('audio', mensagemGravada.blob, 'mensagem-de-voz.webm');
+        formData.append('audio', mensagemGravada.blob, 'mensagem-de-voz');
       } else if (mensagemGravada?.tipo === 'video') {
-        formData.append('video', mensagemGravada.blob, 'mensagem-de-video.webm');
+        formData.append('video', mensagemGravada.blob, 'mensagem-de-video');
       }
 
-      const response = await fetch('/api/paginas', { method: 'POST', body: formData });
+      const response = await fetch(
+        editandoId ? `/api/paginas/${editandoId}` : '/api/paginas',
+        { method: editandoId ? 'PATCH' : 'POST', body: formData }
+      );
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data.error || 'Erro ao salvar o presente.');
       }
 
-      router.push(`/preview/${data.id}`);
+      router.push(`/preview/${editandoId || data.id}`);
     } catch (err: unknown) {
       console.error(err);
       setError(
@@ -301,6 +411,37 @@ export default function CriarPresente() {
   const pergunta = PERGUNTAS_GUIADAS[perguntaIdx];
   const etapaNum = etapa === 'dados' ? 1 : etapa === 'perguntas' || etapa === 'fechamento' ? 2 : 3;
 
+  if (carregandoRascunho) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <Loader2 className="w-10 h-10 animate-spin text-indigo-600 mx-auto mb-4" />
+          <p className="text-gray-600 font-medium">Carregando seu rascunho...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (erroRascunho) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+        <div className="bg-white p-6 rounded-2xl shadow-md max-w-md w-full text-center">
+          <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-4">
+            <Heart className="w-6 h-6 fill-current" />
+          </div>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">Não deu pra editar</h2>
+          <p className="text-gray-600 text-sm mb-6">{erroRascunho}</p>
+          <Link
+            href="/criar"
+            className="block w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold transition-all"
+          >
+            Criar um novo presente
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-rose-50 text-gray-800 py-10 px-4 sm:px-6 lg:px-8">
       <div className="max-w-xl mx-auto">
@@ -311,10 +452,12 @@ export default function CriarPresente() {
             <span>Dia dos Pais 2026</span>
           </div>
           <h1 className="text-3xl sm:text-4xl font-extrabold text-gray-900 tracking-tight">
-            Crie um Recado Surpresa
+            {editandoId ? 'Editar seu Recado Surpresa' : 'Crie um Recado Surpresa'}
           </h1>
           <p className="mt-2 text-base text-gray-600">
-            A gente pergunta. Você lembra. Ele se emociona.
+            {editandoId
+              ? 'Tudo que você já preencheu está aqui — revise e mude o que quiser.'
+              : 'A gente pergunta. Você lembra. Ele se emociona.'}
           </p>
         </div>
 
@@ -759,7 +902,35 @@ export default function CriarPresente() {
                 </div>
 
                 {/* Mensagem de voz (Fase 12, opcional) */}
-                <GravadorMensagem onMensagemPronta={setMensagemGravada} />
+                {mensagemExistente && !mensagemGravada ? (
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">
+                      Uma mensagem pra ele ver/ouvir (opcional)
+                    </label>
+                    <div className="flex items-center gap-3">
+                      {mensagemExistente.tipo === 'video' ? (
+                        <video
+                          controls
+                          src={mensagemExistente.url}
+                          className="flex-1 max-h-40 rounded-xl bg-black"
+                        />
+                      ) : (
+                        <audio controls src={mensagemExistente.url} className="flex-1 h-10" />
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setMensagemExistente(null)}
+                        className="p-2.5 rounded-xl border border-gray-200 hover:bg-gray-50 text-gray-500 flex-shrink-0"
+                        aria-label="Regravar"
+                        title="Regravar"
+                      >
+                        <RotateCcw className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <GravadorMensagem onMensagemPronta={setMensagemGravada} />
+                )}
 
                 {/* Termos (T3.1) */}
                 <label className="flex items-start gap-3 cursor-pointer select-none">
@@ -804,6 +975,11 @@ export default function CriarPresente() {
                       <>
                         <Loader2 className="w-5 h-5 animate-spin" />
                         <span>Guardando cada palavra...</span>
+                      </>
+                    ) : editandoId ? (
+                      <>
+                        <span>Salvar alterações</span>
+                        <ArrowRight className="w-5 h-5" />
                       </>
                     ) : (
                       <>
@@ -865,5 +1041,19 @@ export default function CriarPresente() {
         )}
       </div>
     </main>
+  );
+}
+
+export default function CriarPresente() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+          <Loader2 className="w-10 h-10 animate-spin text-indigo-600" />
+        </div>
+      }
+    >
+      <CriarPresenteForm />
+    </Suspense>
   );
 }

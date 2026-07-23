@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabaseAdmin';
-import { isEmailValido, extrairYoutubeId } from '@/lib/utils';
+import { isEmailValido, extrairYoutubeId, extensaoParaMime } from '@/lib/utils';
 import { MIN_BLOCOS, PERGUNTAS_GUIADAS, MAX_AUDIO_MB, MAX_VIDEO_MB } from '@/lib/config';
 import type { Bloco, Midia } from '@/lib/types';
 
@@ -183,7 +183,7 @@ export async function POST(req: NextRequest) {
     // ---- Upload do áudio (opcional; falha aqui não bloqueia a criação) ----
     let audioUrl: string | null = null;
     if (audioValido && audio instanceof File) {
-      const filePath = `${pageId}/${crypto.randomUUID()}.webm`;
+      const filePath = `${pageId}/${crypto.randomUUID()}.${extensaoParaMime(audio.type)}`;
       const { error: audioError } = await supabaseAdmin.storage
         .from('audios')
         .upload(filePath, await audio.arrayBuffer(), {
@@ -203,7 +203,7 @@ export async function POST(req: NextRequest) {
     // ---- Upload do vídeo (Fase 14, opcional; falha aqui não bloqueia a criação) ----
     let videoUrl: string | null = null;
     if (videoValido && video instanceof File) {
-      const filePath = `${pageId}/${crypto.randomUUID()}.webm`;
+      const filePath = `${pageId}/${crypto.randomUUID()}.${extensaoParaMime(video.type)}`;
       const { error: videoError } = await supabaseAdmin.storage
         .from('videos')
         .upload(filePath, await video.arrayBuffer(), {

@@ -753,7 +753,7 @@ export default function PreviewPagina() {
 
       <header className="max-w-4xl mx-auto px-4 py-6 flex items-center justify-between">
         <button
-          onClick={() => router.push('/criar')}
+          onClick={() => router.push(`/criar?editar=${draft.id}`)}
           className="flex items-center gap-2 text-sm font-semibold text-gray-600 hover:text-gray-950 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />

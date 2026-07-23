@@ -616,6 +616,55 @@ o slide sozinho. Zero erros de console.
 
 ---
 
+## Fase 15 — Gravação mais confiável no celular + editar sem perder dados (aprovada em 21/07/2026)
+
+> Origem: Pedro reportou dois bugs reais em produção — "a gravação não
+> está funcionando no celular, pode entregar apenas foto da fototeca" e
+> "quando clicar em editar conteúdo, pode rever cada um, mas não voltar a
+> ficar em branco tudo".
+
+### Gravação mais confiável (`components/GravadorMensagem.tsx`)
+- **Causa provável:** o Blob final era rotulado à força como `audio/webm`/
+  `video/webm` independente do que o `MediaRecorder` realmente gravou — o
+  Safari não suporta o contêiner WebM e grava em outro formato (tipicamente
+  MP4/AAC), então o rótulo errado quebrava a reprodução. Navegadores in-app
+  (Instagram/WhatsApp) costumam bloquear câmera/microfone por completo.
+- Detecção real de mimeType via `MediaRecorder.isTypeSupported()` antes de
+  gravar; o Blob final usa `recorder.mimeType` (o valor real), nunca mais
+  um tipo fixo.
+- **Fallback sempre disponível:** "ou envie um arquivo já gravado" —
+  `<input type="file" accept="audio/*,video/*">` aceita uma gravação feita
+  no app nativo de câmera/memorando de voz do celular. Vira o único caminho
+  visível quando `MediaRecorder`/`getUserMedia` não existem no navegador.
+- `lib/utils.ts`: `extensaoParaMime` — extensão do arquivo salvo no Storage
+  passa a vir do mimeType real (`app/api/paginas/route.ts` e a nova rota
+  `PATCH`), não mais fixa em `.webm`.
+
+### Editar não apaga mais o rascunho
+- `app/preview/[id]/page.tsx`: "Editar conteúdo" agora navega para
+  `/criar?editar=<id>` em vez de `/criar` puro.
+- `app/criar/page.tsx` ganha um modo de edição: carrega o rascunho
+  existente (real via `/api/paginas/[id]`, mock via IndexedDB) e
+  pré-preenche tudo — e-mail, nome, respostas (reconstruídas dos blocos),
+  mensagem, tema, revelação, música, fotos já enviadas (`FotoForm` ganha
+  `existingUrl` ao lado de `file`) e a mensagem de voz/vídeo existente (com
+  botão "Regravar"). Página exige `<Suspense>` ao redor por causa do
+  `useSearchParams()`.
+- `app/api/paginas/[id]/route.ts` ganha `PATCH`: atualiza o mesmo rascunho
+  (nunca cria um novo), só permitido enquanto `pago = false` (403 depois do
+  pagamento); mantém fotos/áudio/vídeo antigos que não foram substituídos,
+  soma o que for novo.
+- Fluxo de criação (sem `?editar=`) continua idêntico ao de sempre.
+
+**Verificação real:** Playwright confirmou — gravação com microfone falso
+funcionando; `MediaRecorder` removido via `addInitScript` faz o botão de
+gravar sumir e o fallback de arquivo aparecer sozinho; criar um rascunho
+completo (fotos, perguntas, música, voz) → editar → todos os campos vêm
+preenchidos (nenhum em branco) → alterar uma legenda → salvar → volta pro
+mesmo `id` de preview, com a mudança refletida. Zero erros de console.
+
+---
+
 ## Decisões que dependem do dono do produto (não são código)
 
 Estas travam tarefas se atrasarem — todas têm lead time externo (DNS, verificação de conta, etc.):
